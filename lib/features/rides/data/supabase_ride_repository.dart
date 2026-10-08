@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../domain/fare_service.dart';
 import '../domain/ride_models.dart';
 import '../domain/ride_repository.dart';
 import '../domain/ride_status.dart';
@@ -13,19 +14,36 @@ class SupabaseRideRepository implements RideRepository {
 
   @override
   Future<RideRequest> createRequest({
-    required String routeId,
+    required GeoPoint pickup,
+    required GeoPoint dropoff,
     required int passengers,
     required int fare,
     String? pickupLabel,
-    GeoPoint? pickup,
+    String? dropoffLabel,
+    String category = 'car_mini',
+    bool loading = false,
+    BookingType bookingType = BookingType.oneWay,
+    String? packageId,
+    int expectedWaitMin = 0,
+    DateTime? scheduledAt,
+    double? distanceKm,
   }) async {
-    final row = await _client.rpc('create_ride_request', params: {
-      'p_route_id': routeId,
+    final row = await _client.rpc('create_ride_request_geo', params: {
+      'p_pickup_lat': pickup.lat,
+      'p_pickup_lng': pickup.lng,
+      'p_dropoff_lat': dropoff.lat,
+      'p_dropoff_lng': dropoff.lng,
       'p_passenger_count': passengers,
       'p_offered_fare': fare,
       'p_pickup_label': pickupLabel,
-      'p_pickup_lat': pickup?.lat,
-      'p_pickup_lng': pickup?.lng,
+      'p_dropoff_label': dropoffLabel,
+      'p_category': category,
+      'p_loading': loading,
+      'p_booking_type': bookingType.code,
+      'p_package_id': packageId,
+      'p_expected_wait_min': expectedWaitMin,
+      'p_scheduled_at': scheduledAt?.toUtc().toIso8601String(),
+      'p_distance_km': distanceKm,
     });
     return RideRequest.fromJson(row as Map<String, dynamic>);
   }
@@ -35,6 +53,28 @@ class SupabaseRideRepository implements RideRepository {
     final row = await _client.from('ride_requests').select().eq('id', requestId).maybeSingle();
     return row == null ? null : RideRequest.fromJson(row);
   }
+
+  @override
+  Future<void> raiseFare(String requestId, int fare) =>
+      _client.rpc('raise_request_fare', params: {'p_request_id': requestId, 'p_new_fare': fare});
+
+  @override
+  Future<void> updateProgress(String rideId, double km) =>
+      _client.rpc('update_ride_progress', params: {'p_ride_id': rideId, 'p_actual_km': km});
+
+  @override
+  Future<void> reachedDestination(String rideId) =>
+      _client.rpc('driver_reached_destination', params: {'p_ride_id': rideId});
+
+  @override
+  Future<void> returnStarted(String rideId) => _client.rpc('driver_return_started', params: {'p_ride_id': rideId});
+
+  @override
+  Future<void> remindScheduled() => _client.rpc('remind_scheduled_rides');
+
+  @override
+  Future<void> driverArrived(String rideId, {double? lat, double? lng}) => _client.rpc('driver_arrived',
+      params: {'p_ride_id': rideId, if (lat != null && lng != null) 'p_lat': lat, if (lat != null && lng != null) 'p_lng': lng});
 
   @override
   Future<void> cancelRequest(String requestId) =>

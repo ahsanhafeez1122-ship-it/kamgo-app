@@ -12,8 +12,11 @@ import '../../../core/utils/phone.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/buttons.dart';
 import '../../auth/presentation/auth_providers.dart';
+import '../../rides/domain/catalog.dart';
 import '../../rides/presentation/ride_providers.dart';
 import '../domain/profile.dart';
+import '../../../core/services/supabase_providers.dart';
+import 'app_mode.dart';
 import 'profile_providers.dart';
 
 class ProfileTab extends ConsumerWidget {
@@ -111,12 +114,10 @@ class ProfileTab extends ConsumerWidget {
                 icon: Icons.chat_rounded,
                 title: 'Contact KAM GO',
                 subtitle: 'Chat with us on WhatsApp',
-                onTap: settings?.supportWhatsapp == null
-                    ? null
-                    : () => launchUrl(
-                          Uri.parse('https://wa.me/${settings!.supportWhatsapp}'),
-                          mode: LaunchMode.externalApplication,
-                        ),
+                onTap: () => launchUrl(
+                  Uri.parse('https://wa.me/${settings?.supportWhatsapp ?? defaultSupportWhatsapp}'),
+                  mode: LaunchMode.externalApplication,
+                ),
               ),
             ],
           ),
@@ -127,6 +128,7 @@ class ProfileTab extends ConsumerWidget {
           color: AppColors.danger,
           onPressed: () async {
             await ref.read(authServiceProvider).signOut();
+            await setPassengerMode(ref.read(sharedPrefsProvider), false);
             if (context.mounted) context.go(AppRoutes.login);
           },
         ),

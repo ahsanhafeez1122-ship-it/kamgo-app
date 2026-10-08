@@ -1,3 +1,4 @@
+import 'fare_service.dart';
 import 'ride_models.dart';
 import 'ride_status.dart';
 
@@ -14,15 +15,42 @@ enum CancelReason {
 /// Passenger + shared ride operations. Every write is a server RPC; the app
 /// never sets a status or an amount itself.
 abstract interface class RideRepository {
+  /// A request between two map pins; the server derives distance, checks the
+  /// fare guardrails and finds the nearest towns.
   Future<RideRequest> createRequest({
-    required String routeId,
+    required GeoPoint pickup,
+    required GeoPoint dropoff,
     required int passengers,
     required int fare,
     String? pickupLabel,
-    GeoPoint? pickup,
+    String? dropoffLabel,
+    String category = 'car_mini',
+    bool loading = false,
+    BookingType bookingType = BookingType.oneWay,
+    String? packageId,
+    int expectedWaitMin = 0,
+    DateTime? scheduledAt,
+    double? distanceKm,
   });
 
   Future<RideRequest?> request(String requestId);
+
+  /// Passenger offers more while nobody has taken the request.
+  Future<void> raiseFare(String requestId, int fare);
+
+  /// Driver taps arrived at the pickup (starts the waiting clock). Where the driver is, if known,
+  /// teaches KAM GO the exact spot of the pickup address.
+  Future<void> driverArrived(String rideId, {double? lat, double? lng});
+
+  /// Hourly trips: the driver app reports the km travelled so far (it only grows).
+  Future<void> updateProgress(String rideId, double km);
+
+  /// Round trip: the driver reached the destination / starts the way back.
+  Future<void> reachedDestination(String rideId);
+  Future<void> returnStarted(String rideId);
+
+  /// Sends the reminder for scheduled bookings that are about to start (also run by the server).
+  Future<void> remindScheduled();
 
   Future<void> cancelRequest(String requestId);
 

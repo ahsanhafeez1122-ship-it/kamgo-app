@@ -1,12 +1,17 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/l10n/strings.dart';
 import '../../../core/router/app_router.dart';
+import '../../../core/services/routing_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/utils/errors.dart';
@@ -18,10 +23,12 @@ import '../../../core/widgets/states.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../driver/presentation/driver_providers.dart';
 import '../domain/commission.dart';
+import '../domain/fare_service.dart';
 import '../domain/ride_models.dart';
 import '../domain/ride_repository.dart';
 import '../domain/ride_status.dart';
 import 'live_ride_map.dart';
+import 'location_tracker.dart';
 import 'live_state.dart';
 import 'ride_flow_providers.dart';
 import 'ride_providers.dart';
@@ -38,11 +45,35 @@ class RideScreen extends ConsumerStatefulWidget {
 
 class _RideScreenState extends ConsumerState<RideScreen> {
   bool _busy = false;
+  Timer? _clock;
+  Timer? _progress;
+  late final RideLocationTracker _tracker;
+
+  @override
+  void initState() {
+    super.initState();
+    // Fetched here because ref cannot be used inside dispose().
+    _tracker = ref.read(rideLocationTrackerProvider);
+    // Re-render every 30 s so the arrival countdown keeps moving.
+    _clock = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+    // Hourly trips: the driver app reports the km driven every 20 s (the server only keeps the highest).
+    _progress = Timer.periodic(const Duration(seconds: 20), (_) {
+      final r = ref.read(liveRideProvider(widget.rideId)).valueOrNull;
+      if (r == null || r.status != RideStatus.rideStarted || r.bookingType != BookingType.hourly || !_isDriver(r)) return;
+      if (_tracker.km > r.actualKm) {
+        ref.read(rideRepositoryProvider).updateProgress(r.id, _tracker.km).catchError((_) {});
+      }
+    });
+  }
 
   @override
   void dispose() {
+    _clock?.cancel();
+    _progress?.cancel();
     // Stop GPS when leaving the screen; it restarts if the driver returns.
-    ref.read(rideLocationTrackerProvider).stop();
+    _tracker.stop();
     super.dispose();
   }
 
@@ -93,6 +124,9 @@ class _RideScreenState extends ConsumerState<RideScreen> {
     );
     if (ok != true) return;
     await _run(() => ref.read(rideRepositoryProvider).completeRide(r.id));
+    ref.invalidate(driverDashboardProvider);
+    ref.invalidate(rideHistoryProvider);
+    ref.invalidate(driverFeedProvider);
     if (mounted) context.go(AppRoutes.rideComplete(r.id));
   }
 
@@ -129,6 +163,48 @@ class _RideScreenState extends ConsumerState<RideScreen> {
     await _run(() => ref.read(rideRepositoryProvider).cancelRide(r.id, choice));
   }
 
+  Future<void> _sos(RideDetails r) async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Emergency help', style: AppText.display(18, color: AppColors.danger)),
+              const SizedBox(height: 6),
+              Text(
+                'Send an SOS alert to the KAM GO team with your location, or call the police (15) right now.',
+                style: AppText.body(14, color: AppColors.mutedDark),
+              ),
+              const SizedBox(height: 16),
+              PrimaryButton(label: 'Send SOS alert', onPressed: () => Navigator.pop(context, 'sos')),
+              const SizedBox(height: 10),
+              SecondaryButton(label: 'Call police (15)', onPressed: () => Navigator.pop(context, 'call')),
+              const SizedBox(height: 8),
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('I am safe')),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (choice == 'call') {
+      await launchUrl(Uri.parse('tel:15'));
+    } else if (choice == 'sos') {
+      try {
+        await ref.read(sosServiceProvider).trigger(rideId: r.id);
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('SOS sent. The KAM GO team has been alerted.')));
+        }
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
+      }
+    }
+  }
+
   void _share(RideDetails r) {
     final status = switch (r.status) {
       RideStatus.rideStarted => 'is on the way',
@@ -151,8 +227,21 @@ class _RideScreenState extends ConsumerState<RideScreen> {
       final r = next.valueOrNull;
       if (r == null) return;
       final driver = _isDriver(r);
+      if (prev?.valueOrNull != null && prev!.valueOrNull!.status != r.status && !r.isActive) {
+        // Finished or cancelled (by either side): refresh what the dashboards show.
+        ref.invalidate(driverDashboardProvider);
+        ref.invalidate(rideHistoryProvider);
+        ref.invalidate(driverFeedProvider);
+        ref.invalidate(activeStateProvider);
+      }
       if (driver && r.isActive) {
-        ref.read(rideLocationTrackerProvider).start(r.id);
+        final tracker = ref.read(rideLocationTrackerProvider);
+        tracker.start(r.id).then((_) {
+          tracker.syncKm(r.actualKm);
+          tracker.setCounting(r.status == RideStatus.rideStarted);
+        });
+        tracker.syncKm(r.actualKm);
+        tracker.setCounting(r.status == RideStatus.rideStarted);
       } else if (driver) {
         ref.read(rideLocationTrackerProvider).stop();
       }
@@ -197,6 +286,8 @@ class _RideScreenState extends ConsumerState<RideScreen> {
       _ => ('Ride cancelled', r.routeName),
     };
 
+    final arrival = _arrivalText(r, isDriver);
+
     return Column(
       children: [
         Expanded(
@@ -227,8 +318,11 @@ class _RideScreenState extends ConsumerState<RideScreen> {
               color: AppColors.background,
               borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
             ),
-            child: ListView(
-              padding: EdgeInsets.fromLTRB(20, 18, 20, 20 + MediaQuery.paddingOf(context).bottom),
+            child: Column(
+              children: [
+                Expanded(
+                  child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
               children: [
                 Row(
                   children: [
@@ -248,6 +342,47 @@ class _RideScreenState extends ConsumerState<RideScreen> {
                     Text(formatFare(r.finalFare), style: AppText.display(20, weight: FontWeight.w800, color: AppColors.green)),
                   ],
                 ),
+                if (r.scheduledAt != null && (r.status == RideStatus.confirmed || r.status == RideStatus.driverArriving)) ...[
+                  const SizedBox(height: 12),
+                  _InfoBanner(icon: Icons.event_rounded, text: 'Scheduled pickup ${_whenText(r.scheduledAt!)}'),
+                ],
+                if (r.bookingType != BookingType.oneWay && r.status == RideStatus.rideStarted) ...[
+                  const SizedBox(height: 12),
+                  _TripPanel(
+                    ride: r,
+                    isDriver: isDriver,
+                    freeWaitMinutes: ref.read(catalogProvider).valueOrNull?.settings.fare.roundTripFreeWaitMinutes ?? 30,
+                    driverKm: isDriver ? _tracker.km : null,
+                  ),
+                ],
+                if (_waitingText(r, isDriver) case final w?) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(color: AppColors.greenSoft, borderRadius: BorderRadius.circular(14)),
+                    child: Row(children: [
+                      const Icon(Icons.hourglass_bottom_rounded, color: AppColors.green),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(w, style: AppText.body(14, weight: FontWeight.w600))),
+                    ]),
+                  ),
+                ],
+                if (arrival != null) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(color: AppColors.greenSoft, borderRadius: BorderRadius.circular(14)),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.schedule_rounded, color: AppColors.green),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(arrival, style: AppText.body(15, weight: FontWeight.w700, color: AppColors.green)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 14),
                 AppCard(
                   padding: const EdgeInsets.all(14),
@@ -309,6 +444,12 @@ class _RideScreenState extends ConsumerState<RideScreen> {
                       ),
                       _Action(icon: Icons.ios_share_rounded, label: context.tr('ride.share'), onTap: () => _share(r)),
                       _Action(
+                        icon: Icons.sos_rounded,
+                        label: 'SOS',
+                        color: AppColors.danger,
+                        onTap: () => _sos(r),
+                      ),
+                      _Action(
                         icon: Icons.close_rounded,
                         label: context.tr('ride.cancel'),
                         color: AppColors.danger,
@@ -319,28 +460,6 @@ class _RideScreenState extends ConsumerState<RideScreen> {
                       ),
                     ],
                   ),
-                if (isDriver && r.isActive) ...[
-                  const SizedBox(height: 16),
-                  if (r.status == RideStatus.confirmed) ...[
-                    SecondaryButton(
-                      label: context.tr('ride.on_way'),
-                      onPressed: _busy
-                          ? null
-                          : () => _run(() =>
-                              ref.read(rideRepositoryProvider).updateStatus(r.id, RideStatus.driverArriving)),
-                    ),
-                    const SizedBox(height: 10),
-                  ],
-                  if (r.status != RideStatus.rideStarted)
-                    PrimaryButton(
-                      label: context.tr('ride.start'),
-                      loading: _busy,
-                      onPressed: () =>
-                          _run(() => ref.read(rideRepositoryProvider).updateStatus(r.id, RideStatus.rideStarted)),
-                    )
-                  else
-                    PrimaryButton(label: context.tr('ride.complete'), loading: _busy, onPressed: () => _complete(r)),
-                ],
                 if (!r.isActive) ...[
                   const SizedBox(height: 16),
                   PrimaryButton(
@@ -359,10 +478,111 @@ class _RideScreenState extends ConsumerState<RideScreen> {
                 ),
               ],
             ),
+                ),
+                // The driver's main buttons stay on screen: no scrolling to find Start Ride.
+                if (isDriver && r.isActive) _driverBar(r),
+              ],
+            ),
           ),
         ),
       ],
     );
+  }
+
+  Widget _driverBar(RideDetails r) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(20, 10, 20, 12 + MediaQuery.paddingOf(context).bottom),
+      decoration: const BoxDecoration(
+        color: AppColors.white,
+        border: Border(top: BorderSide(color: AppColors.borderSoft)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (r.status == RideStatus.confirmed) ...[
+            SecondaryButton(
+              label: context.tr('ride.on_way'),
+              onPressed: _busy
+                  ? null
+                  : () => _run(() => ref.read(rideRepositoryProvider).updateStatus(r.id, RideStatus.driverArriving)),
+            ),
+            const SizedBox(height: 10),
+          ],
+          if (r.arrivedAt == null && (r.status == RideStatus.confirmed || r.status == RideStatus.driverArriving)) ...[
+            SecondaryButton(
+              label: 'I have arrived at the pickup',
+              onPressed: _busy
+                  ? null
+                  : () => _run(() async {
+                        // The driver's GPS here is the true spot of the pickup address (KAM GO learns it).
+                        final here = await ref
+                            .read(locationServiceProvider)
+                            .current()
+                            .timeout(const Duration(seconds: 6), onTimeout: () => null)
+                            .catchError((_) => null);
+                        await ref.read(rideRepositoryProvider).driverArrived(r.id, lat: here?.lat, lng: here?.lng);
+                      }),
+            ),
+            const SizedBox(height: 10),
+          ],
+          if (r.status == RideStatus.rideStarted && r.bookingType == BookingType.roundTrip) ...[
+            if (r.destArrivedAt == null)
+              SecondaryButton(
+                label: 'Arrived at destination',
+                onPressed: _busy ? null : () => _run(() => ref.read(rideRepositoryProvider).reachedDestination(r.id)),
+              )
+            else if (r.returnStartedAt == null)
+              SecondaryButton(
+                label: 'Return started',
+                onPressed: _busy ? null : () => _run(() => ref.read(rideRepositoryProvider).returnStarted(r.id)),
+              ),
+            if (r.destArrivedAt == null || r.returnStartedAt == null) const SizedBox(height: 10),
+          ],
+          if (r.status != RideStatus.rideStarted)
+            PrimaryButton(
+              label: context.tr('ride.start'),
+              loading: _busy,
+              onPressed: () => _run(() => ref.read(rideRepositoryProvider).updateStatus(r.id, RideStatus.rideStarted)),
+            )
+          else
+            PrimaryButton(label: context.tr('ride.complete'), loading: _busy, onPressed: () => _complete(r)),
+        ],
+      ),
+    );
+  }
+
+  /// Waiting at the pickup once the driver has tapped arrived: free minutes, then a per-minute charge.
+  String? _waitingText(RideDetails r, bool isDriver) {
+    final at = r.arrivedAt;
+    if (at == null || r.status == RideStatus.rideStarted || !r.isActive) return null;
+    final free = ref.read(catalogProvider).valueOrNull?.settings.fare.waitingFreeMinutes ?? 5;
+    final waited = DateTime.now().difference(at).inMinutes;
+    final left = free - waited;
+    final who = isDriver ? 'Passenger' : 'Driver';
+    return left > 0
+        ? '$who waiting: free for $left more min'
+        : '$who waiting: charge is running (${waited - free} min over the free time)';
+  }
+
+  /// How long until the driver is at the pickup. The driver's live position wins;
+  /// without it, the ETA the driver promised when they made the offer counts down.
+  String? _arrivalText(RideDetails r, bool isDriver) {
+    if (r.status != RideStatus.confirmed && r.status != RideStatus.driverArriving) return null;
+    int? mins;
+    final pickup = r.origin.point;
+    // The time the driver chose (3, 5, 10... min), counting down. A live GPS position only replaces it
+    // when it is believable (a phone/PC can report a position hundreds of km away).
+    if (r.etaMin != null && r.confirmedAt != null) {
+      mins = r.etaMin! - DateTime.now().difference(r.confirmedAt!).inMinutes;
+    }
+    if (r.lastLocation != null && pickup != null) {
+      final km = haversineKm(LatLng(r.lastLocation!.lat, r.lastLocation!.lng), LatLng(pickup.lat, pickup.lng)) * roadFactor;
+      if (km < 40) mins = math.max(1, (km / 30 * 60).ceil());
+    }
+    if (mins == null) return null;
+    if (mins <= 0) return isDriver ? 'You should be at the pickup now' : 'Your driver should be arriving now';
+    return isDriver ? 'Reach the pickup in about $mins min' : 'Driver arrives in about $mins min';
   }
 }
 
@@ -503,6 +723,133 @@ class CommissionBreakdownCard extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+
+String _whenText(DateTime t) {
+  final h = t.hour % 12 == 0 ? 12 : t.hour % 12;
+  final now = DateTime.now();
+  final today = t.year == now.year && t.month == now.month && t.day == now.day;
+  return '${today ? 'today' : '${t.day}/${t.month}'} $h:${t.minute.toString().padLeft(2, '0')} ${t.hour < 12 ? 'AM' : 'PM'}';
+}
+
+String _hms(Duration d) {
+  final s = d.isNegative ? 0 : d.inSeconds;
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${s ~/ 3600}:${two((s % 3600) ~/ 60)}:${two(s % 60)}';
+}
+
+class _InfoBanner extends StatelessWidget {
+  const _InfoBanner({required this.icon, required this.text});
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(color: AppColors.greenSoft, borderRadius: BorderRadius.circular(14)),
+        child: Row(children: [
+          Icon(icon, color: AppColors.green),
+          const SizedBox(width: 10),
+          Expanded(child: Text(text, style: AppText.body(14, weight: FontWeight.w600))),
+        ]),
+      );
+}
+
+/// Live panel for hourly rentals (timer and km counter) and round trips (destination waiting).
+/// Both people see the same numbers; the driver app supplies the km.
+class _TripPanel extends StatefulWidget {
+  const _TripPanel({required this.ride, required this.isDriver, required this.freeWaitMinutes, this.driverKm});
+
+  final RideDetails ride;
+  final bool isDriver;
+  final int freeWaitMinutes;
+  final double? driverKm;
+
+  @override
+  State<_TripPanel> createState() => _TripPanelState();
+}
+
+class _TripPanelState extends State<_TripPanel> {
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final r = widget.ride;
+    final now = DateTime.now();
+    Widget line(String label, String value, {Color? color}) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: Row(children: [
+            Expanded(child: Text(label, style: AppText.body(13.5, color: AppColors.mutedDark))),
+            Text(value, style: AppText.body(15, weight: FontWeight.w700, color: color ?? AppColors.navy)),
+          ]),
+        );
+    final children = <Widget>[];
+    if (r.bookingType == BookingType.hourly) {
+      final started = r.startedAt ?? now;
+      final elapsed = now.difference(started);
+      final included = Duration(hours: r.packageHours ?? 0);
+      final km = math.max(r.actualKm, widget.driverKm ?? 0);
+      final over = elapsed > included;
+      children.addAll([
+        Text('Hourly rental · ${r.packageHours}h / ${r.packageKm?.round()} km', style: AppText.display(15)),
+        const SizedBox(height: 6),
+        line('Time', '${_hms(elapsed)} of ${_hms(included)}', color: over ? AppColors.danger : null),
+        line('Distance', '${km.toStringAsFixed(1)} of ${r.packageKm?.round()} km',
+            color: km > (r.packageKm ?? double.infinity) ? AppColors.danger : null),
+        if (over || km > (r.packageKm ?? double.infinity))
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              'Over the package: extra km ${formatFare(r.extraKmRate)} each, extra hour ${formatFare(r.extraHourRate)} (a started hour counts).',
+              style: AppText.body(12.5, color: AppColors.mutedDark),
+            ),
+          ),
+      ]);
+    } else if (r.bookingType == BookingType.roundTrip) {
+      final free = 30;
+      children.add(Text('Round trip', style: AppText.display(15)));
+      children.add(const SizedBox(height: 6));
+      if (r.destArrivedAt == null) {
+        children.add(line('Status', 'On the way to the destination'));
+      } else if (r.returnStartedAt == null) {
+        final waited = now.difference(r.destArrivedAt!);
+        children.add(line('Waiting at destination', _hms(waited)));
+        children.add(Text(
+          waited.inMinutes < free
+              ? 'The first $free minutes are free.'
+              : 'Charge is running: ${formatFare(r.roundTripWaitPerHour)} per started hour after $free minutes.',
+          style: AppText.body(12.5, color: AppColors.mutedDark),
+        ));
+      } else {
+        children.add(line('Status', 'Returning'));
+        children.add(line('Waited at destination', '${r.returnStartedAt!.difference(r.destArrivedAt!).inMinutes} min'));
+      }
+    }
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.borderSoft),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
     );
   }
 }

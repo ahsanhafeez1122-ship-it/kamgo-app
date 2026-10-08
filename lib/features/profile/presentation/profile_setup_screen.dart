@@ -10,6 +10,8 @@ import '../../../core/widgets/buttons.dart';
 import '../../auth/presentation/auth_layout.dart';
 import '../../rides/presentation/ride_providers.dart';
 import '../domain/profile.dart';
+import '../../../core/services/supabase_providers.dart';
+import 'app_mode.dart';
 import 'profile_providers.dart';
 
 class ProfileSetupScreen extends ConsumerStatefulWidget {
@@ -22,7 +24,6 @@ class ProfileSetupScreen extends ConsumerStatefulWidget {
 class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
   final _name = TextEditingController();
   UserRole _role = UserRole.passenger;
-  String? _cityId;
   bool _saving = false;
   String? _error;
 
@@ -38,8 +39,11 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
       setState(() => _error = 'Please enter your name.');
       return;
     }
-    if (_role == UserRole.driver && _cityId == null) {
-      setState(() => _error = 'Please choose the city you drive from.');
+    // There are no addas any more: drivers get requests of their ride type from everywhere.
+    // The server still wants a home town for the record, so use the first one.
+    final cityId = _role == UserRole.driver ? ref.read(catalogProvider).valueOrNull?.cities.firstOrNull?.id : null;
+    if (_role == UserRole.driver && cityId == null) {
+      setState(() => _error = 'Could not load the service area. Check your internet and try again.');
       return;
     }
     setState(() {
@@ -49,11 +53,13 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
     try {
       await ref
           .read(profileRepositoryProvider)
-          .completeProfile(fullName: name, role: _role, cityId: _cityId);
+          .completeProfile(fullName: name, role: _role, cityId: cityId);
       ref.invalidate(myProfileProvider);
       ref.invalidate(myDriverInfoProvider);
       final profile = await ref.read(myProfileProvider.future);
-      if (mounted) context.go(homeRouteFor(profile));
+      if (mounted) {
+        context.go(homeRouteFor(profile, passengerMode: isPassengerMode(ref.read(sharedPrefsProvider))));
+      }
     } on PostgrestException catch (e) {
       setState(() => _error = e.message);
     } catch (_) {
@@ -65,7 +71,6 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cities = ref.watch(catalogProvider).valueOrNull?.cities ?? const [];
     return AuthLayout(
       title: 'Set up your profile',
       subtitle: 'Just a few details and you are ready to go.',
@@ -92,7 +97,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
           _RoleOption(
             icon: Icons.directions_car_rounded,
             title: 'I drive',
-            subtitle: 'Get ride requests from your adda',
+            subtitle: 'Get ride requests and earn',
             selected: _role == UserRole.driver,
             onTap: () => setState(() => _role = UserRole.driver),
           ),
@@ -106,27 +111,6 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const FieldLabel('Which city do you drive from?'),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            for (final c in cities)
-                              ChoiceChip(
-                                label: Text(c.name),
-                                selected: _cityId == c.id,
-                                onSelected: (_) => setState(() => _cityId = c.id),
-                                labelStyle: AppText.body(14,
-                                    weight: FontWeight.w600,
-                                    color: _cityId == c.id ? AppColors.white : AppColors.navy),
-                                selectedColor: AppColors.green,
-                                backgroundColor: AppColors.white,
-                                showCheckmark: false,
-                                side: const BorderSide(color: AppColors.border),
-                                shape: const StadiumBorder(),
-                              ),
-                          ],
-                        ),
                         const SizedBox(height: 10),
                         Text(
                           'Your driver account will be reviewed by KAM GO before you can go online.',

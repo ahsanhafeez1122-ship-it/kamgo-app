@@ -39,8 +39,8 @@ void main() {
     });
     expect(r.status, RideStatus.rideStarted);
     expect(r.isActive, isTrue);
-    expect(r.routeName, 'Pir Mahal → Rajana');
-    expect(r.origin.display, 'Bus Adda, Pir Mahal');
+    expect(r.routeName, 'Bus Adda → Rajana'); // the passenger's own words, not the town
+    expect(r.origin.display, 'Bus Adda');
     expect(r.vehicle.title, 'Toyota Corolla');
     expect(r.commission, 120);
     expect(r.driverEarning, 1080);

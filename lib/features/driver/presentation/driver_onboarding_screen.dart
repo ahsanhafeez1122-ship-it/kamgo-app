@@ -12,11 +12,12 @@ import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/buttons.dart';
 import '../../auth/presentation/auth_layout.dart';
 import '../../profile/domain/profile.dart';
+import '../../rides/domain/catalog.dart';
 import '../../rides/presentation/ride_providers.dart';
 import '../domain/driver_models.dart';
 import 'driver_providers.dart';
 
-/// Driver registration: CNIC, city, vehicle, preferred routes, documents.
+/// Driver registration: CNIC, city, vehicle model (the ride type follows from it), AC, documents.
 class DriverOnboardingScreen extends ConsumerStatefulWidget {
   const DriverOnboardingScreen({super.key});
 
@@ -26,15 +27,13 @@ class DriverOnboardingScreen extends ConsumerStatefulWidget {
 
 class _DriverOnboardingScreenState extends ConsumerState<DriverOnboardingScreen> {
   final _cnic = TextEditingController();
-  final _make = TextEditingController();
-  final _model = TextEditingController();
   final _color = TextEditingController();
   final _plate = TextEditingController();
   final _year = TextEditingController();
-  String _type = 'CAR';
+  VehicleModel? _model;
+  bool _ac = false;
   int _seats = 4;
   String? _cityId;
-  final Set<String> _routes = {};
   final Set<DriverDocType> _uploaded = {};
   DriverDocType? _uploading;
   bool _saving = false;
@@ -43,30 +42,29 @@ class _DriverOnboardingScreenState extends ConsumerState<DriverOnboardingScreen>
 
   @override
   void dispose() {
-    for (final c in [_cnic, _make, _model, _color, _plate, _year]) {
+    for (final c in [_cnic, _color, _plate, _year]) {
       c.dispose();
     }
     super.dispose();
   }
 
-  void _prefill(DriverDashboard d) {
+  void _prefill(DriverDashboard d, Catalog? catalog) {
     if (_prefilled) return;
     _prefilled = true;
     _cnic.text = d.cnic ?? '';
-    _make.text = d.vehicleMake ?? '';
-    _model.text = d.vehicleModel ?? '';
     _color.text = d.vehicleColor ?? '';
     _plate.text = d.vehiclePlate ?? '';
     _year.text = d.vehicleYear?.toString() ?? '';
-    _type = d.vehicleType ?? 'CAR';
     _seats = d.vehicleSeats ?? 4;
     _cityId = d.cityId;
-    _routes.addAll(d.routeIds);
+    _ac = d.vehicleAc;
+    for (final m in catalog?.vehicleModels ?? const <VehicleModel>[]) {
+      if (m.matches(d.vehicleMake, d.vehicleModel)) _model = m;
+    }
     for (final t in DriverDocType.values) {
       if (d.documentTypes.contains(t.code)) _uploaded.add(t);
     }
   }
-
   Future<void> _upload(DriverDocType t) async {
     final camera = await showModalBottomSheet<bool>(
       context: context,
@@ -103,9 +101,10 @@ class _DriverOnboardingScreenState extends ConsumerState<DriverOnboardingScreen>
   }
 
   Future<void> _submit() async {
-    final missing = DriverDocType.values.where((t) => !_uploaded.contains(t)).map((t) => t.label);
+    final catalog = ref.read(catalogProvider).valueOrNull;
     if (_cityId == null) return setState(() => _error = 'Choose your city.');
-    if (_routes.isEmpty) return setState(() => _error = 'Choose at least one route you drive.');
+    if (_model == null) return setState(() => _error = 'Choose your vehicle model from the list.');
+    final missing = DriverDocType.values.where((t) => !_uploaded.contains(t)).map((t) => t.label);
     if (missing.isNotEmpty) return setState(() => _error = 'Please upload: ${missing.join(', ')}.');
     setState(() {
       _saving = true;
@@ -115,14 +114,13 @@ class _DriverOnboardingScreenState extends ConsumerState<DriverOnboardingScreen>
       await ref.read(driverRepositoryProvider).saveApplication(DriverApplication(
             cnic: _cnic.text,
             cityId: _cityId!,
-            vehicleType: _type,
-            make: _make.text,
-            model: _model.text,
+            make: _model!.make,
+            model: _model!.model,
             color: _color.text,
             plate: _plate.text,
             seats: _seats,
             year: int.tryParse(_year.text),
-            routeIds: _routes.toList(),
+            acAvailable: _ac && (catalog?.category(_model!.category)?.isCar ?? false),
           ));
       ref.invalidate(driverDashboardProvider);
       if (mounted) {
@@ -142,10 +140,19 @@ class _DriverOnboardingScreenState extends ConsumerState<DriverOnboardingScreen>
   Widget build(BuildContext context) {
     final dash = ref.watch(driverDashboardProvider).valueOrNull;
     final catalog = ref.watch(catalogProvider).valueOrNull;
-    if (dash != null) _prefill(dash);
+    if (dash != null) _prefill(dash, catalog);
     final locked = dash != null && dash.status != DriverStatus.pending && dash.status != DriverStatus.rejected;
 
     InputDecoration dec(String hint) => InputDecoration(hintText: hint);
+
+    // All active models, grouped by ride type in the admin's display order.
+    final models = [...?catalog?.vehicleModels];
+    int order(String code) => catalog?.category(code)?.sortOrder ?? 99;
+    models.sort((a, b) {
+      final c = order(a.category).compareTo(order(b.category));
+      return c != 0 ? c : a.title.compareTo(b.title);
+    });
+    final category = _model == null ? null : catalog?.category(_model!.category);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.dark,
@@ -164,34 +171,61 @@ class _DriverOnboardingScreenState extends ConsumerState<DriverOnboardingScreen>
               decoration: dec('33100-1234567-1'),
             ),
             const SizedBox(height: 14),
-            const FieldLabel('Your city (adda)'),
+            const FieldLabel('Your city (you get requests from this city)'),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                for (final c in catalog?.cities ?? const [])
-                  _Chip(label: c.name, selected: _cityId == c.id, onTap: locked ? null : () => setState(() => _cityId = c.id)),
-              ],
-            ),
-            const _Section('2. Your vehicle'),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final t in const ['CAR', 'RICKSHAW', 'VAN', 'MOTORCYCLE'])
+                for (final c in catalog?.cities ?? const <City>[])
                   _Chip(
-                    label: t[0] + t.substring(1).toLowerCase(),
-                    selected: _type == t,
-                    onTap: locked ? null : () => setState(() => _type = t),
+                    label: c.name,
+                    selected: _cityId == c.id,
+                    onTap: locked ? null : () => setState(() => _cityId = c.id),
                   ),
               ],
             ),
-            const SizedBox(height: 12),
-            Row(children: [
-              Expanded(child: TextField(controller: _make, enabled: !locked, decoration: dec('Make (Suzuki)'))),
-              const SizedBox(width: 10),
-              Expanded(child: TextField(controller: _model, enabled: !locked, decoration: dec('Model (Alto)'))),
-            ]),
+            const _Section('2. Your vehicle'),
+            const FieldLabel('Vehicle model'),
+            DropdownButtonFormField<VehicleModel>(
+              initialValue: _model,
+              isExpanded: true,
+              decoration: dec('Choose your vehicle'),
+              items: [
+                for (final m in models)
+                  DropdownMenuItem(
+                    value: m,
+                    child: Text('${m.title}  ·  ${catalog?.category(m.category)?.name ?? m.category}',
+                        overflow: TextOverflow.ellipsis),
+                  ),
+              ],
+              onChanged: locked
+                  ? null
+                  : (m) => setState(() {
+                        _model = m;
+                        final c = m == null ? null : catalog?.category(m.category);
+                        if (c != null) _seats = c.maxPassengers;
+                        if (c != null && !c.isCar) _ac = false;
+                      }),
+            ),
+            if (category != null) ...[
+              const SizedBox(height: 8),
+              Row(children: [
+                const Icon(Icons.check_circle_rounded, size: 18, color: AppColors.green),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text('You will get ${category.name} rides (set automatically from your model).',
+                      style: AppText.body(13.5, weight: FontWeight.w600, color: AppColors.green)),
+                ),
+              ]),
+            ],
+            if (category?.isCar == true)
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text('AC available', style: AppText.body(15, weight: FontWeight.w600)),
+                value: _ac,
+                activeThumbColor: AppColors.green,
+                onChanged: locked ? null : (v) => setState(() => _ac = v),
+              ),
             const SizedBox(height: 10),
             Row(children: [
               Expanded(child: TextField(controller: _color, enabled: !locked, decoration: dec('Colour'))),
@@ -221,42 +255,8 @@ class _DriverOnboardingScreenState extends ConsumerState<DriverOnboardingScreen>
               IconButton(onPressed: locked || _seats <= 1 ? null : () => setState(() => _seats--), icon: const Icon(Icons.remove_rounded)),
               Text('$_seats', style: AppText.display(17)),
               IconButton(onPressed: locked || _seats >= 20 ? null : () => setState(() => _seats++), icon: const Icon(Icons.add_rounded)),
-            ]),
-            const _Section('3. Routes you drive'),
-            if (catalog != null)
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final r in catalog.routes)
-                    _Chip(
-                      label: catalog.routeName(r),
-                      selected: _routes.contains(r.id),
-                      onTap: () => setState(() => _routes.contains(r.id) ? _routes.remove(r.id) : _routes.add(r.id)),
-                    ),
-                ],
-              ),
-            if (locked) ...[
-              const SizedBox(height: 12),
-              SecondaryButton(
-                label: 'Save routes',
-                onPressed: () async {
-                  try {
-                    await ref.read(driverRepositoryProvider).setRoutes(_routes.toList());
-                    ref.invalidate(driverDashboardProvider);
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Routes saved')));
-                    }
-                  } catch (e) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
-                    }
-                  }
-                },
-              ),
-            ],
-            if (!locked) ...[
-              const _Section('4. Documents'),
+            ]),            if (!locked) ...[
+              const _Section('3. Documents'),
               Text('Clear photos, compressed automatically before upload. Only KAM GO can see them.',
                   style: AppText.body(13, color: AppColors.mutedDark)),
               const SizedBox(height: 12),

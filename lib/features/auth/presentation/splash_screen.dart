@@ -4,13 +4,13 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/constants/app_strings.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_text.dart';
 import '../../../core/utils/motion.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/kamgo_logo.dart';
+import '../../../core/services/supabase_providers.dart';
+import '../../profile/presentation/app_mode.dart';
 import '../../profile/presentation/profile_providers.dart';
 import 'auth_providers.dart';
 
@@ -39,7 +39,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
       if (ref.read(authServiceProvider).currentUserId == null) {
         target = AppRoutes.login;
       } else {
-        target = homeRouteFor(await ref.read(myProfileProvider.future));
+        target = homeRouteFor(
+          await ref.read(myProfileProvider.future),
+          passengerMode: isPassengerMode(ref.read(sharedPrefsProvider)),
+        );
       }
     } catch (_) {
       // Offline or backend unreachable: a signed-in user still gets in and
@@ -91,18 +94,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                     const SizedBox(height: 28),
                     const Wordmark(size: 34)
                         .motion(context, delay: 450.ms)
-                        .fadeIn(duration: 450.ms)
-                        .moveY(begin: 14, end: 0, curve: Curves.easeOutCubic),
-                    const SizedBox(height: 10),
-                    Text(
-                      AppStrings.tagline,
-                      style: AppText.body(
-                        16,
-                        weight: FontWeight.w500,
-                        color: AppColors.white.withValues(alpha: 0.72),
-                      ),
-                    )
-                        .motion(context, delay: 650.ms)
                         .fadeIn(duration: 450.ms)
                         .moveY(begin: 14, end: 0, curve: Curves.easeOutCubic),
                   ],

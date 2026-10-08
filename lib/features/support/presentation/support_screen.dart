@@ -9,6 +9,7 @@ import '../../../core/theme/app_text.dart';
 import '../../../core/utils/errors.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/buttons.dart';
+import '../../rides/domain/catalog.dart';
 import '../../rides/presentation/ride_providers.dart';
 import '../data/support_repository.dart';
 
@@ -16,7 +17,7 @@ final supportRepositoryProvider = Provider((ref) => SupportRepository(ref.watch(
 
 const _faq = [
   ('How does KAM GO work?',
-      'You choose where you are going and offer a fare. Drivers at your city\'s adda accept it or send a counter offer. You pick the driver you like.'),
+      'You choose where you are going and offer a fare. Drivers of the ride type you chose accept it or send a counter offer. You pick the driver you like.'),
   ('How do I pay?', 'Pay the driver in cash at the end of the ride. The fare is the one you agreed in the app.'),
   ('Why was my fare not accepted?',
       'Every route has a fair range so nobody is under- or over-charged. If no one accepts, try raising your offer a little.'),
@@ -47,10 +48,9 @@ class SupportScreen extends ConsumerWidget {
                 child: _ContactCard(
                   icon: Icons.chat_rounded,
                   label: 'WhatsApp',
-                  onTap: s?.supportWhatsapp == null
-                      ? null
-                      : () => launchUrl(Uri.parse('https://wa.me/${s!.supportWhatsapp}'),
-                          mode: LaunchMode.externalApplication),
+                  onTap: () => launchUrl(
+                      Uri.parse('https://wa.me/${s?.supportWhatsapp ?? defaultSupportWhatsapp}'),
+                      mode: LaunchMode.externalApplication),
                 ),
               ),
               const SizedBox(width: 12),
@@ -58,7 +58,7 @@ class SupportScreen extends ConsumerWidget {
                 child: _ContactCard(
                   icon: Icons.call_rounded,
                   label: 'Call KAM GO',
-                  onTap: s?.supportPhone == null ? null : () => launchUrl(Uri.parse('tel:${s!.supportPhone}')),
+                  onTap: () => launchUrl(Uri.parse('tel:${s?.supportPhone ?? defaultSupportPhone}')),
                 ),
               ),
             ],

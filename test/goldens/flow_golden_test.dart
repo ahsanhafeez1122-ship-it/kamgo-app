@@ -135,7 +135,7 @@ void main() {
   });
 
   testWidgets('driver dashboard', (tester) async {
-    await _pump(tester, const Scaffold(body: SafeArea(child: DriverDashboardTab())), [
+    await _pump(tester, Scaffold(body: SafeArea(child: DriverDashboardTab(onOpenMenu: () {}))), [
       driverDashboardProvider.overrideWith((_) async => DriverDashboard.fromJson({
             'status': 'APPROVED', 'is_online': true, 'city_id': 'r', 'city_name': 'Rajana', 'rating': 4.9,
             'rating_count': 12, 'total_rides': 40, 'cnic': 'x',

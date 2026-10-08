@@ -9,3 +9,14 @@ build/
 android/local.properties
 android/key.properties
 *.jks
+*.keystore
+android/app/google-services.json
+service-account*.json
+.env.*
+!.env.example
+
+# Golden test diff output
+test/goldens/failures/
+
+# Personal documents kept in the working folder
+*.pdf

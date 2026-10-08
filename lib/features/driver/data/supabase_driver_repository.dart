@@ -35,7 +35,6 @@ class SupabaseDriverRepository implements DriverRepository {
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'ride_requests',
-          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'origin_city_id', value: cityId),
           callback: tick,
         )
         .onPostgresChanges(
@@ -59,13 +58,15 @@ class SupabaseDriverRepository implements DriverRepository {
   }
 
   @override
-  Future<void> submitOffer(String requestId, {required bool accept, int? fare, double? lat, double? lng}) =>
+  Future<void> submitOffer(String requestId,
+          {required bool accept, int? fare, double? lat, double? lng, int? etaMin}) =>
       _client.rpc('submit_offer', params: {
         'p_request_id': requestId,
         'p_offer_type': accept ? 'ACCEPT' : 'COUNTER',
         'p_fare': fare,
         'p_driver_lat': lat,
         'p_driver_lng': lng,
+        'p_eta_min': etaMin,
       });
 
   @override
@@ -77,18 +78,20 @@ class SupabaseDriverRepository implements DriverRepository {
       _client.rpc('set_driver_online', params: {'p_online': online, 'p_city_id': cityId});
 
   @override
+  Future<void> updateLocation(double lat, double lng) =>
+      _client.rpc('update_driver_location', params: {'p_lat': lat, 'p_lng': lng});
+
+  @override
   Future<void> saveApplication(DriverApplication a) => _client.rpc('save_driver_application', params: {
         'p_cnic': a.cnic,
         'p_city_id': a.cityId,
-        'p_vehicle_type': a.vehicleType,
         'p_vehicle_make': a.make,
         'p_vehicle_model': a.model,
         'p_vehicle_color': a.color,
         'p_plate_number': a.plate,
         'p_seats': a.seats,
         'p_vehicle_year': a.year,
-        'p_route_ids': a.routeIds,
-        'p_service_area_ids': <String>[],
+        'p_ac_available': a.acAvailable,
       });
 
   @override

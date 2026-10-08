@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,17 +17,20 @@ import '../../../core/widgets/buttons.dart';
 import '../../../core/widgets/kamgo_logo.dart';
 import '../../../core/widgets/states.dart';
 import '../../profile/domain/profile.dart';
+import '../../profile/presentation/kamgo_drawer.dart';
 import '../../profile/presentation/profile_providers.dart';
-import '../../passenger/presentation/booking_sheets.dart';
 import '../../rides/presentation/ride_flow_providers.dart';
 import '../../rides/presentation/ride_providers.dart';
 import '../domain/driver_models.dart';
+import 'arrival_sheet.dart';
 import 'counter_offer_sheet.dart';
 import 'driver_providers.dart';
 import 'request_card.dart';
 
 class DriverDashboardTab extends ConsumerStatefulWidget {
-  const DriverDashboardTab({super.key});
+  const DriverDashboardTab({super.key, required this.onOpenMenu});
+
+  final VoidCallback onOpenMenu;
 
   @override
   ConsumerState<DriverDashboardTab> createState() => _DriverDashboardTabState();
@@ -34,12 +39,40 @@ class DriverDashboardTab extends ConsumerStatefulWidget {
 class _DriverDashboardTabState extends ConsumerState<DriverDashboardTab> {
   bool _toggling = false;
   String? _busyRequest;
+  Timer? _locationTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // While online, keep telling the server where we are: requests are sent to
+    // drivers near the pickup first.
+    _locationTimer = Timer.periodic(const Duration(seconds: 30), (_) => _reportLocation());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _reportLocation());
+  }
+
+  @override
+  void dispose() {
+    _locationTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _reportLocation() async {
+    if (!mounted || ref.read(driverDashboardProvider).valueOrNull?.isOnline != true) return;
+    final here = await ref.read(locationServiceProvider).current(timeout: const Duration(seconds: 6));
+    if (here == null || !mounted) return;
+    try {
+      await ref.read(driverRepositoryProvider).updateLocation(here.lat, here.lng);
+    } catch (_) {
+      // Offline for a moment: the next tick tries again.
+    }
+  }
 
   Future<void> _setOnline(bool online, {String? cityId}) async {
     setState(() => _toggling = true);
     try {
       await ref.read(driverRepositoryProvider).setOnline(online, cityId: cityId);
       ref.invalidate(driverDashboardProvider);
+      if (online) unawaited(Future<void>.delayed(const Duration(milliseconds: 600), _reportLocation));
       ref.invalidate(addaSummaryProvider);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
@@ -51,20 +84,30 @@ class _DriverDashboardTabState extends ConsumerState<DriverDashboardTab> {
   Future<void> _offer(FeedRequest r, {required bool accept}) async {
     int? fare;
     if (!accept) {
-      final policy = ref.read(catalogProvider).valueOrNull?.settings.farePolicy;
-      if (policy == null) return;
-      fare = await showCounterOfferSheet(context, r, policy);
+      fare = await showCounterOfferSheet(context, r);
       if (fare == null) return;
     }
+    if (!mounted) return;
+    // How soon can the driver be at the pickup? Suggest from the distance when we know it.
+    final suggested = r.pickupKm == null ? 10 : (r.pickupKm! / 30 * 60).ceil().clamp(3, 60);
+    final eta = await showArrivalSheet(context, fare: (fare ?? r.offeredFare).round(), accept: accept, initial: suggested);
+    if (eta == null || !mounted) return;
     setState(() => _busyRequest = r.requestId);
     try {
       final here = await ref.read(locationServiceProvider).current(timeout: const Duration(seconds: 4));
       await ref.read(driverRepositoryProvider)
-          .submitOffer(r.requestId, accept: accept, fare: fare, lat: here?.lat, lng: here?.lng);
+          .submitOffer(r.requestId, accept: accept, fare: fare, lat: here?.lat, lng: here?.lng, etaMin: eta);
       await ref.read(driverFeedProvider.notifier).refresh();
-      if (mounted) {
+      if (accept) {
+        // Accepting the passenger's own fare confirms the ride at once: open it (Start Ride is there).
+        ref.invalidate(activeStateProvider);
+        final active = await ref.read(rideRepositoryProvider).myActive();
+        if (mounted && active.rideId != null) {
+          context.push(AppRoutes.ride(active.rideId!));
+        }
+      } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Offer of ${formatFare(fare ?? r.offeredFare)} sent to ${r.passengerName}')),
+          SnackBar(content: Text('Counter offer of ${formatFare(fare!)} sent to ${r.passengerName}')),
         );
       }
     } catch (e) {
@@ -84,14 +127,9 @@ class _DriverDashboardTabState extends ConsumerState<DriverDashboardTab> {
     }
   }
 
-  Future<void> _changeCity(DriverDashboard d) async {
-    final cities = ref.read(catalogProvider).valueOrNull?.cities ?? const [];
-    final id = await showCityPicker(context, title: 'Which adda are you at?', cities: cities, selectedId: d.cityId);
-    if (id != null && id != d.cityId) await _setOnline(d.isOnline, cityId: id);
-  }
-
   @override
   Widget build(BuildContext context) {
+    ref.watch(scheduledReminderProvider);
     final dash = ref.watch(driverDashboardProvider);
     final profile = ref.watch(myProfileProvider).valueOrNull;
     final active = ref.watch(activeStateProvider).valueOrNull;
@@ -114,6 +152,12 @@ class _DriverDashboardTabState extends ConsumerState<DriverDashboardTab> {
         children: [
           Row(
             children: [
+              IconButton(
+                tooltip: 'Menu',
+                onPressed: widget.onOpenMenu,
+                icon: const Icon(Icons.menu_rounded, color: AppColors.navy),
+              ),
+              const SizedBox(width: 4),
               const LogoBadge(size: 38, radius: 11),
               const SizedBox(width: 10),
               const Wordmark(size: 21, kamColor: AppColors.navy, goColor: AppColors.green),
@@ -125,7 +169,9 @@ class _DriverDashboardTabState extends ConsumerState<DriverDashboardTab> {
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 14),
+          const ModeSwitch(driverMode: true),
+          const SizedBox(height: 16),
           Text('${greetingFor(DateTime.now())}, ${profile?.firstName ?? ''}', style: AppText.display(22)),
           const SizedBox(height: 16),
           if (active?.rideId != null) ...[
@@ -170,6 +216,7 @@ class _DriverDashboardTabState extends ConsumerState<DriverDashboardTab> {
                 padding: const EdgeInsets.only(bottom: 12),
                 child: RequestCard(
                   request: rs[i],
+                  categoryName: ref.watch(catalogProvider).valueOrNull?.category(rs[i].category)?.name,
                   busy: _busyRequest != null,
                   onAccept: () => _offer(rs[i], accept: true),
                   onCounter: () => _offer(rs[i], accept: false),
@@ -195,30 +242,22 @@ class _DriverDashboardTabState extends ConsumerState<DriverDashboardTab> {
                 child: AppCard(
                   padding: const EdgeInsets.all(16),
                   radius: 18,
-                  onTap: () => _changeCity(d),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(children: [
-                        Expanded(
-                          child: Text(context.tr('driver.adda', {'city': d.cityName ?? '—'}),
-                              style: AppText.body(13, weight: FontWeight.w600, color: AppColors.mutedDark)),
-                        ),
-                        const Icon(Icons.edit_location_alt_rounded, size: 17, color: AppColors.muted),
-                      ]),
+                      Text('Right now', style: AppText.body(13, weight: FontWeight.w600, color: AppColors.mutedDark)),
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          _Count(value: d.addaOnline, label: 'online'),
+                          _Count(value: ref.watch(addaSummaryProvider).valueOrNull?.fold<int>(0, (s, a) => s + a.onlineDrivers) ?? d.addaOnline, label: 'online'),
                           const SizedBox(width: 18),
-                          _Count(value: d.addaOpenRequests, label: 'requests'),
+                          _Count(value: ref.watch(addaSummaryProvider).valueOrNull?.fold<int>(0, (s, a) => s + a.openRequests) ?? d.addaOpenRequests, label: 'requests'),
                         ],
                       ),
                     ],
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
+              ),              const SizedBox(width: 12),
               Expanded(
                 child: AppCard(
                   padding: const EdgeInsets.all(16),
@@ -275,7 +314,7 @@ class _DriverDashboardTabState extends ConsumerState<DriverDashboardTab> {
               child: InfoState(
                 icon: Icons.hourglass_empty_rounded,
                 title: context.tr('driver.no_requests'),
-                message: 'New requests from the ${d.cityName ?? ''} adda appear here instantly.',
+                message: 'New ride requests for your ride type appear here instantly.',
               ),
             )
           else
@@ -315,7 +354,7 @@ class _OnlineToggle extends StatelessWidget {
               children: [
                 Text(online ? context.tr('driver.online') : context.tr('driver.offline'),
                     style: AppText.display(18, color: online ? AppColors.white : AppColors.navy)),
-                Text(online ? 'Receiving requests from your adda' : context.tr('driver.go_online'),
+                Text(online ? 'Receiving ride requests' : context.tr('driver.go_online'),
                     style: AppText.body(13, color: online ? AppColors.white.withValues(alpha: 0.85) : AppColors.mutedDark)),
               ],
             ),

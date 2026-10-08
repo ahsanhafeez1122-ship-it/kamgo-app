@@ -21,6 +21,7 @@ class _AdminCitiesPageState extends ConsumerState<AdminCitiesPage> {
     final lat = TextEditingController(text: city?['lat']?.toString());
     final lng = TextEditingController(text: city?['lng']?.toString());
     final order = TextEditingController(text: '${city?['sort_order'] ?? 0}');
+    final radius = TextEditingController(text: '${city?['service_radius_km'] ?? 25}');
     final save = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -40,7 +41,11 @@ class _AdminCitiesPageState extends ConsumerState<AdminCitiesPage> {
                 Expanded(child: TextField(controller: lng, decoration: const InputDecoration(labelText: 'Longitude'))),
               ]),
               const SizedBox(height: 10),
-              TextField(controller: order, decoration: const InputDecoration(labelText: 'Sort order')),
+              Row(children: [
+                Expanded(child: TextField(controller: radius, decoration: const InputDecoration(labelText: 'Service radius (km)'))),
+                const SizedBox(width: 10),
+                Expanded(child: TextField(controller: order, decoration: const InputDecoration(labelText: 'Sort order'))),
+              ]),
             ],
           ),
         ),
@@ -59,6 +64,7 @@ class _AdminCitiesPageState extends ConsumerState<AdminCitiesPage> {
         'lat': double.tryParse(lat.text),
         'lng': double.tryParse(lng.text),
         'sort_order': int.tryParse(order.text) ?? 0,
+        'service_radius_km': double.tryParse(radius.text) ?? 25,
       }, id: city?['id'] as String?),
       success: 'City saved',
     );
@@ -75,13 +81,14 @@ class _AdminCitiesPageState extends ConsumerState<AdminCitiesPage> {
         key: ValueKey(_v),
         load: repo.cities,
         builder: (context, rows, _) => AdminTable(
-          columns: const ['City', 'Urdu', 'Coordinates', 'Order', 'Active', ''],
+          columns: const ['City', 'Urdu', 'Coordinates', 'Radius', 'Order', 'Active', ''],
           rows: [
             for (final c in rows)
               DataRow(cells: [
                 DataCell(Text(c['name'] as String, style: AppText.body(14, weight: FontWeight.w600))),
                 DataCell(Text(c['name_ur'] as String? ?? '')),
                 DataCell(Text('${c['lat'] ?? '—'}, ${c['lng'] ?? '—'}')),
+                DataCell(Text('${c['service_radius_km']} km')),
                 DataCell(Text('${c['sort_order']}')),
                 DataCell(Switch(
                   value: c['is_active'] as bool,

@@ -5,12 +5,42 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/widgets/motion_widgets.dart';
+import '../../rides/domain/fare_service.dart';
 import '../domain/driver_models.dart';
+
+class _PlaceLine extends StatelessWidget {
+  const _PlaceLine({required this.icon, required this.color, required this.text});
+
+  final IconData icon;
+  final Color color;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Icon(icon, size: 11, color: color),
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: Text(text, style: AppText.body(14.5, weight: FontWeight.w600))),
+        ],
+      );
+}
+
+String _when(DateTime t) {
+  final h = t.hour % 12 == 0 ? 12 : t.hour % 12;
+  final now = DateTime.now();
+  final today = t.year == now.year && t.month == now.month && t.day == now.day;
+  return '${today ? 'today' : '${t.day}/${t.month}'} $h:${t.minute.toString().padLeft(2, '0')} ${t.hour < 12 ? 'AM' : 'PM'}';
+}
 
 class RequestCard extends StatelessWidget {
   const RequestCard({
     super.key,
     required this.request,
+    this.categoryName,
     required this.busy,
     required this.onAccept,
     required this.onCounter,
@@ -18,6 +48,9 @@ class RequestCard extends StatelessWidget {
   });
 
   final FeedRequest request;
+
+  /// The ride type's display name (from the admin-managed catalog).
+  final String? categoryName;
   final bool busy;
   final VoidCallback onAccept;
   final VoidCallback onCounter;
@@ -45,25 +78,32 @@ class RequestCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text('${r.originName} → ${r.destinationName}', style: AppText.display(16.5)),
+                child: Text(categoryName ?? r.category, style: AppText.display(16.5)),
               ),
               Text(formatFare(r.offeredFare), style: AppText.display(19, weight: FontWeight.w800, color: AppColors.green)),
             ],
           ),
-          const SizedBox(height: 6),
-          if (r.pickupLabel != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Row(
-                children: [
-                  const Icon(Icons.place_rounded, size: 16, color: AppColors.green),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(r.pickupLabel!, style: AppText.body(13.5, weight: FontWeight.w500)),
-                  ),
-                ],
-              ),
-            ),
+          if (r.badge != null || r.scheduledAt != null) ...[
+            const SizedBox(height: 6),
+            Wrap(spacing: 6, runSpacing: 4, children: [
+              if (r.badge != null) _Badge(r.badge!),
+              if (r.scheduledAt != null) _Badge('Scheduled ${_when(r.scheduledAt!)}'),
+            ]),
+          ],
+          const SizedBox(height: 8),
+          // Exactly the words the passenger wrote or chose (the town only if there were none).
+          _PlaceLine(
+            icon: Icons.circle,
+            color: AppColors.green,
+            text: placeName(r.pickupLabel, r.originName),
+          ),
+          const SizedBox(height: 4),
+          _PlaceLine(
+            icon: Icons.square_rounded,
+            color: AppColors.navy,
+            text: placeName(r.dropoffLabel, r.destinationName),
+          ),
+          const SizedBox(height: 8),
           Wrap(
             spacing: 12,
             runSpacing: 4,
@@ -75,10 +115,43 @@ class RequestCard extends StatelessWidget {
                 RatingText(r.passengerRating),
               ]),
               _Meta(Icons.people_alt_rounded, '${r.passengerCount}'),
-              _Meta(Icons.straighten_rounded, '${r.distanceKm.toStringAsFixed(0)} km'),
+              _Meta(Icons.straighten_rounded, '${r.distanceKm.toStringAsFixed(0)} km trip'),
+              if (r.pickupKm != null) _Meta(Icons.near_me_rounded, '${r.pickupKm!.toStringAsFixed(1)} km away'),
               _Meta(Icons.schedule_rounded, _ago(r.createdAt)),
             ],
           ),
+          if (r.commission > 0) ...[
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(
+                child: Text('Commission ${formatFare(r.commission)}',
+                    style: AppText.body(13, color: AppColors.mutedDark)),
+              ),
+              Text('You will get ${formatFare(r.driverGets)}',
+                  style: AppText.body(14, weight: FontWeight.w700, color: AppColors.green)),
+            ]),
+          ],
+          if (r.bookingType == BookingType.hourly && r.packageKm != null) ...[
+            const SizedBox(height: 6),
+            Text('${r.packageHours} hours · ${r.packageKm!.round()} km included — extra km and hours are paid on top',
+                style: AppText.body(12.5, color: AppColors.mutedDark)),
+          ],
+          if (r.bookingType == BookingType.roundTrip) ...[
+            const SizedBox(height: 6),
+            Text(
+              r.expectedWaitMin > 0
+                  ? 'Goes there and back · passenger expects to wait ${r.expectedWaitMin} min at the destination'
+                  : 'Goes there and back',
+              style: AppText.body(12.5, color: AppColors.mutedDark),
+            ),
+          ],
+          if (r.isNight || r.loadingSelected) ...[
+            const SizedBox(height: 6),
+            Wrap(spacing: 6, children: [
+              if (r.isNight) const _Badge('Night fare'),
+              if (r.loadingSelected) const _Badge('Loading help'),
+            ]),
+          ],
           if (r.hasMyOffer) ...[
             const SizedBox(height: 12),
             Container(
@@ -139,6 +212,18 @@ class RequestCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _Badge extends StatelessWidget {
+  const _Badge(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(color: AppColors.greenSoft, borderRadius: BorderRadius.circular(8)),
+        child: Text(text, style: AppText.body(12, weight: FontWeight.w600, color: AppColors.green)),
+      );
 }
 
 class _Meta extends StatelessWidget {

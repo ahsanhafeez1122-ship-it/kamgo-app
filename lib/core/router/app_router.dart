@@ -36,9 +36,12 @@ abstract final class AppRoutes {
 }
 
 /// Where a signed-in user lands, based on their server-side profile.
-String homeRouteFor(Profile? profile) {
+///
+/// A driver account can also use the app as a passenger ("Passenger mode");
+/// [passengerMode] is that device-level choice.
+String homeRouteFor(Profile? profile, {bool passengerMode = false}) {
   if (profile == null || !profile.onboarded) return AppRoutes.setup;
-  return profile.role == UserRole.driver ? AppRoutes.driver : AppRoutes.home;
+  return profile.role == UserRole.driver && !passengerMode ? AppRoutes.driver : AppRoutes.home;
 }
 
 final routerProvider = Provider<GoRouter>((ref) {

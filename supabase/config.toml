@@ -69,7 +69,7 @@ schema_paths = []
 enabled = true
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"
-sql_paths = ["./seed.sql"]
+sql_paths = ["./seed.sql", "./seed_places.sql"]
 
 [db.network_restrictions]
 # Enable management of network restrictions.
@@ -276,6 +276,10 @@ max_frequency = "5s"
 923000000013 = "123456"
 923000000014 = "123456"
 923000000015 = "123456"
+923000000016 = "123456"
+923000000017 = "123456"
+923000000018 = "123456"
+923000000019 = "123456"
 # Fresh numbers (no seed data) for trying signup + onboarding.
 923000000098 = "123456"
 923000000099 = "123456"

@@ -35,6 +35,26 @@ class _AdminDriversPageState extends ConsumerState<AdminDriversPage> {
     if (ok) _reload();
   }
 
+  Future<void> _changeCity(Map<String, dynamic> d) async {
+    final repo = ref.read(adminRepositoryProvider);
+    final cities = [for (final c in await repo.cities()) if (c['is_active'] == true) c];
+    if (!mounted) return;
+    final id = await _choose(context, 'City for ${d['full_name']}', {for (final c in cities) c['id'] as String: c['name'] as String}, d['city_id'] as String?);
+    if (id == null || !mounted) return;
+    final ok = await adminAction(context, () => repo.setDriverCity(d['driver_id'] as String, id), success: 'City changed');
+    if (ok) _reload();
+  }
+
+  Future<void> _changeCategory(Map<String, dynamic> d) async {
+    final repo = ref.read(adminRepositoryProvider);
+    final cats = [for (final c in await repo.categories()) if (c['is_active'] == true) c];
+    if (!mounted) return;
+    final code = await _choose(context, 'Ride type for ${d['full_name']}', {for (final c in cats) c['code'] as String: c['name'] as String}, d['category'] as String?);
+    if (code == null || !mounted) return;
+    final ok = await adminAction(context, () => repo.setDriverCategory(d['driver_id'] as String, code), success: 'Ride type changed');
+    if (ok) _reload();
+  }
+
   Future<void> _payment(Map<String, dynamic> d) async {
     final v = await askText(context, 'Cash collected from ${d['full_name']}',
         hint: 'Amount in Rs.', number: true, initial: '${(d['commission_due'] as num).round()}');
@@ -117,7 +137,7 @@ class _AdminDriversPageState extends ConsumerState<AdminDriversPage> {
         key: ValueKey('$_status/$_version'),
         load: () => repo.drivers(status: _status),
         builder: (context, rows, _) => AdminTable(
-          columns: const ['Driver', 'Phone', 'Status', 'City', 'Vehicle', 'CNIC', 'Rating', 'Rides', 'Commission due', 'Docs', 'Actions'],
+          columns: const ['Driver', 'Phone', 'Status', 'City', 'Ride type', 'Vehicle', 'CNIC', 'Rating', 'Rides', 'Commission due', 'Docs', 'Actions'],
           rows: [
             for (final d in rows)
               DataRow(cells: [
@@ -138,6 +158,7 @@ class _AdminDriversPageState extends ConsumerState<AdminDriversPage> {
                   ],
                 ])),
                 DataCell(Text(d['city_name'] as String? ?? '—')),
+                DataCell(Text('${d['category_name'] ?? '—'}${d['ac_available'] == true ? ' · AC' : ''}')),
                 DataCell(Text('${d['vehicle'] ?? '—'}${d['plate'] == null ? '' : '\n${d['plate']}'}')),
                 DataCell(Text(d['cnic'] as String? ?? '—')),
                 DataCell(Text((d['rating'] as num?)?.toStringAsFixed(1) ?? '—')),
@@ -145,6 +166,8 @@ class _AdminDriversPageState extends ConsumerState<AdminDriversPage> {
                 DataCell(Text(formatFare(d['commission_due'] as num))),
                 DataCell(TextButton(onPressed: () => _documents(d), child: Text('${d['document_count']} view'))),
                 DataCell(Wrap(spacing: 4, children: [
+                  TextButton(onPressed: () => _changeCity(d), child: const Text('City')),
+                  TextButton(onPressed: () => _changeCategory(d), child: const Text('Type')),
                   if (d['status'] != 'APPROVED')
                     TextButton(onPressed: () => _setStatus(d, 'APPROVED'), child: const Text('Approve')),
                   if (d['status'] == 'PENDING')
@@ -164,3 +187,18 @@ class _AdminDriversPageState extends ConsumerState<AdminDriversPage> {
     );
   }
 }
+
+Future<String?> _choose(BuildContext context, String title, Map<String, String> options, String? current) =>
+    showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text(title),
+        children: [
+          for (final e in options.entries)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, e.key),
+              child: Text(e.value + (e.key == current ? '   (current)' : '')),
+            ),
+        ],
+      ),
+    );

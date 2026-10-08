@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
-import '../theme/app_text.dart';
 
-/// Green rounded-square badge with the white line-art car.
+/// The KG mark on a white rounded tile (readable on both light and navy backgrounds).
 class LogoBadge extends StatelessWidget {
   const LogoBadge({super.key, this.size = 112, this.radius});
 
@@ -15,21 +14,59 @@ class LogoBadge extends StatelessWidget {
     return Container(
       width: size,
       height: size,
+      padding: EdgeInsets.all(size * 0.14),
       decoration: BoxDecoration(
-        color: AppColors.green,
+        color: AppColors.white,
         borderRadius: BorderRadius.circular(radius ?? size * 0.25),
+        border: Border.all(color: AppColors.borderSoft),
       ),
-      alignment: Alignment.center,
-      child: CustomPaint(
-        size: Size.square(size * 0.7),
-        painter: const CarLinePainter(),
-      ),
+      child: Image.asset('assets/logo/logo_mark.png', fit: BoxFit.contain, semanticLabel: 'KAM GO'),
     );
   }
 }
 
-/// Simple line-art car drawn in a 100×100 box, so it stays crisp at any size
-/// without shipping an image asset.
+/// The "KAM GO" lettering from the logo. [kamColor] only picks the variant:
+/// a light colour (the default, for navy backgrounds) uses the white-and-green
+/// version, a dark one uses the navy-and-green original.
+class Wordmark extends StatelessWidget {
+  const Wordmark({
+    super.key,
+    this.size = 34,
+    this.kamColor = AppColors.white,
+    this.goColor = AppColors.greenLight,
+  });
+
+  /// Roughly the font size the old text wordmark used; the image is scaled to match.
+  final double size;
+  final Color kamColor;
+  final Color goColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final onDark = kamColor.computeLuminance() > 0.5;
+    return Image.asset(
+      onDark ? 'assets/logo/logo_wordmark_white.png' : 'assets/logo/logo_wordmark.png',
+      height: size * 0.95,
+      fit: BoxFit.contain,
+      semanticLabel: 'KAM GO',
+    );
+  }
+}
+
+/// The full logo (mark above the lettering) for big spots such as the splash screen.
+class KamgoLogo extends StatelessWidget {
+  const KamgoLogo({super.key, this.height = 140});
+
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.asset('assets/logo/logo_full.png', height: height, fit: BoxFit.contain, semanticLabel: 'KAM GO');
+  }
+}
+
+/// Simple line-art car drawn in a 100×100 box (used for the map car marker and
+/// the radar), so it stays crisp at any size without an image asset.
 class CarLinePainter extends CustomPainter {
   const CarLinePainter({this.color = AppColors.white, this.fill = AppColors.green});
 
@@ -82,30 +119,4 @@ class CarLinePainter extends CustomPainter {
   @override
   bool shouldRepaint(CarLinePainter oldDelegate) =>
       oldDelegate.color != color || oldDelegate.fill != fill;
-}
-
-/// "KAM" + "GO" wordmark.
-class Wordmark extends StatelessWidget {
-  const Wordmark({
-    super.key,
-    this.size = 34,
-    this.kamColor = AppColors.white,
-    this.goColor = AppColors.greenLight,
-  });
-
-  final double size;
-  final Color kamColor;
-  final Color goColor;
-
-  @override
-  Widget build(BuildContext context) {
-    final style = AppText.display(size, weight: FontWeight.w800, height: 1.1);
-    return Text.rich(
-      TextSpan(children: [
-        TextSpan(text: 'KAM ', style: style.copyWith(color: kamColor)),
-        TextSpan(text: 'GO', style: style.copyWith(color: goColor)),
-      ]),
-      semanticsLabel: 'KAM GO',
-    );
-  }
 }

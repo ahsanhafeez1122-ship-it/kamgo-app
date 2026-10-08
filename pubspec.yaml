@@ -38,6 +38,9 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
+  assets:
+    - assets/logo/
+
   # Fonts are bundled (not fetched at runtime) so the app works fully offline.
   fonts:
     - family: Poppins

@@ -21,7 +21,9 @@ begin;
 insert into public.cities (id, name, name_ur, lat, lng, sort_order) values
   ('11111111-1111-4111-8111-000000000001', 'Kamalia',   'کمالیہ',  30.7258, 72.6447, 1),
   ('11111111-1111-4111-8111-000000000002', 'Pir Mahal', 'پیر محل', 30.7667, 72.4333, 2),
-  ('11111111-1111-4111-8111-000000000003', 'Rajana',    'رجانہ',   30.7340, 72.3070, 3)
+  ('11111111-1111-4111-8111-000000000003', 'Rajana',    'رجانہ',   30.7340, 72.3070, 3),
+  ('11111111-1111-4111-8111-000000000004', 'Chichawatni', 'چیچہ وطنی', 30.5301, 72.6917, 4),
+  ('11111111-1111-4111-8111-000000000005', 'Toba Tek Singh', 'ٹوبہ ٹیک سنگھ', 30.9709, 72.4826, 5)
 on conflict (id) do nothing;
 
 insert into public.service_areas (city_id, name, lat, lng, radius_km)
@@ -49,7 +51,11 @@ with demo(id, phone) as (values
   ('33333333-3333-4333-8333-000000000012'::uuid, '923000000012'),
   ('33333333-3333-4333-8333-000000000013'::uuid, '923000000013'),
   ('33333333-3333-4333-8333-000000000014'::uuid, '923000000014'),
-  ('33333333-3333-4333-8333-000000000015'::uuid, '923000000015')
+  ('33333333-3333-4333-8333-000000000015'::uuid, '923000000015'),
+  ('33333333-3333-4333-8333-000000000016'::uuid, '923000000016'),
+  ('33333333-3333-4333-8333-000000000017'::uuid, '923000000017'),
+  ('33333333-3333-4333-8333-000000000018'::uuid, '923000000018'),
+  ('33333333-3333-4333-8333-000000000019'::uuid, '923000000019')
 )
 insert into auth.users (
   instance_id, id, aud, role, phone, phone_confirmed_at,
@@ -84,7 +90,11 @@ update public.profiles p
     ('33333333-3333-4333-8333-000000000012'::uuid, 'Bilal Hussain',  'DRIVER'),
     ('33333333-3333-4333-8333-000000000013'::uuid, 'Usman Tariq',    'DRIVER'),
     ('33333333-3333-4333-8333-000000000014'::uuid, 'Kashif Mehmood', 'DRIVER'),
-    ('33333333-3333-4333-8333-000000000015'::uuid, 'Naveed Akhtar',  'DRIVER')
+    ('33333333-3333-4333-8333-000000000015'::uuid, 'Naveed Akhtar',  'DRIVER'),
+    ('33333333-3333-4333-8333-000000000016'::uuid, 'Zeeshan Bike',   'DRIVER'),
+    ('33333333-3333-4333-8333-000000000017'::uuid, 'Rafiq Rickshaw', 'DRIVER'),
+    ('33333333-3333-4333-8333-000000000018'::uuid, 'Akram Loader',   'DRIVER'),
+    ('33333333-3333-4333-8333-000000000019'::uuid, 'Faisal XL',      'DRIVER')
   ) as d(id, name, role)
  where p.id = d.id;
 
@@ -100,17 +110,45 @@ insert into public.drivers (id, status, is_online, current_city_id, cnic_number,
   ('33333333-3333-4333-8333-000000000012', 'APPROVED', true,  '11111111-1111-4111-8111-000000000002', '33100-0000012-1', 4.90, 0, now(), '33333333-3333-4333-8333-000000000001', now()),
   ('33333333-3333-4333-8333-000000000013', 'APPROVED', true,  '11111111-1111-4111-8111-000000000002', '33100-0000013-1', 4.60, 0, now(), '33333333-3333-4333-8333-000000000001', now()),
   ('33333333-3333-4333-8333-000000000014', 'APPROVED', false, '11111111-1111-4111-8111-000000000001', '33100-0000014-1', 4.70, 0, now(), '33333333-3333-4333-8333-000000000001', null),
-  ('33333333-3333-4333-8333-000000000015', 'PENDING',  false, '11111111-1111-4111-8111-000000000003', '33100-0000015-1', 5.00, 0, null,  null, null)
+  ('33333333-3333-4333-8333-000000000015', 'PENDING',  false, '11111111-1111-4111-8111-000000000003', '33100-0000015-1', 5.00, 0, null,  null, null),
+  ('33333333-3333-4333-8333-000000000016', 'APPROVED', true,  '11111111-1111-4111-8111-000000000002', '33100-0000016-1', 4.70, 0, now(), '33333333-3333-4333-8333-000000000001', now()),
+  ('33333333-3333-4333-8333-000000000017', 'APPROVED', true,  '11111111-1111-4111-8111-000000000002', '33100-0000017-1', 4.60, 0, now(), '33333333-3333-4333-8333-000000000001', now()),
+  ('33333333-3333-4333-8333-000000000018', 'APPROVED', true,  '11111111-1111-4111-8111-000000000002', '33100-0000018-1', 4.50, 0, now(), '33333333-3333-4333-8333-000000000001', now()),
+  ('33333333-3333-4333-8333-000000000019', 'APPROVED', true,  '11111111-1111-4111-8111-000000000002', '33100-0000019-1', 4.80, 0, now(), '33333333-3333-4333-8333-000000000001', now())
 on conflict (id) do nothing;
 
 insert into public.vehicles (id, driver_id, vehicle_type, make, model, color, plate_number, seats, year) values
   ('44444444-4444-4444-8444-000000000011', '33333333-3333-4333-8333-000000000011', 'CAR',      'Suzuki', 'Alto',    'White',  'TTA-1101', 4,  2021),
-  ('44444444-4444-4444-8444-000000000012', '33333333-3333-4333-8333-000000000012', 'CAR',      'Toyota', 'Corolla', 'Silver', 'TTA-1202', 4,  2018),
-  ('44444444-4444-4444-8444-000000000013', '33333333-3333-4333-8333-000000000013', 'VAN',      'Suzuki', 'Bolan',   'White',  'TTA-1303', 7,  2019),
-  ('44444444-4444-4444-8444-000000000014', '33333333-3333-4333-8333-000000000014', 'CAR',      'Honda',  'City',    'Black',  'TTA-1404', 4,  2020),
-  ('44444444-4444-4444-8444-000000000015', '33333333-3333-4333-8333-000000000015', 'RICKSHAW', 'Qingqi', 'Rickshaw','Green',  'TTA-1505', 3,  2022)
+  ('44444444-4444-4444-8444-000000000012', '33333333-3333-4333-8333-000000000012', 'CAR',      'Suzuki', 'Cultus',  'Silver', 'TTA-1202', 4,  2018),
+  ('44444444-4444-4444-8444-000000000013', '33333333-3333-4333-8333-000000000013', 'CAR',      'Suzuki', 'Wagon R', 'White',  'TTA-1303', 4,  2019),
+  ('44444444-4444-4444-8444-000000000014', '33333333-3333-4333-8333-000000000014', 'CAR',      'Honda',  'Civic',   'Black',  'TTA-1404', 4,  2020),
+  ('44444444-4444-4444-8444-000000000015', '33333333-3333-4333-8333-000000000015', 'RICKSHAW', 'Qingqi', 'Auto Rickshaw','Green',  'TTA-1505', 3,  2022),
+  ('44444444-4444-4444-8444-000000000016', '33333333-3333-4333-8333-000000000016', 'MOTORCYCLE', 'Honda', 'CD 70',   'Red',    'TTA-1606', 1,  2022),
+  ('44444444-4444-4444-8444-000000000017', '33333333-3333-4333-8333-000000000017', 'RICKSHAW', 'Qingqi', 'Auto Rickshaw','Yellow', 'TTA-1707', 3,  2021),
+  ('44444444-4444-4444-8444-000000000018', '33333333-3333-4333-8333-000000000018', 'RICKSHAW', 'Suzuki', 'Bolan Cargo', 'Blue', 'TTA-1808', 1, 2020),
+  ('44444444-4444-4444-8444-000000000019', '33333333-3333-4333-8333-000000000019', 'VAN',      'Honda',  'BR-V',    'White', 'TTA-1909', 7, 2021)
 on conflict (id) do nothing;
 
+-- Ride categories (set from each vehicle's model by the app; here by plate for the demo data) and cities.
+-- Car Mini: Imran (Alto), Bilal (Cultus), Usman (Wagon R).  Car Comfort: Kashif (Civic, offline).
+-- Rickshaw: Naveed (pending), Rafiq.  Bike: Zeeshan.  Loader: Akram.  Car XL: Faisal (BR-V).
+update public.vehicles set category = 'car_mini'    where plate_number in ('TTA-1101', 'TTA-1202', 'TTA-1303');
+update public.vehicles set category = 'car_comfort', ac_available = true where plate_number = 'TTA-1404';
+update public.vehicles set category = 'car_xl',      ac_available = true where plate_number = 'TTA-1909';
+update public.vehicles set category = 'rickshaw'    where plate_number in ('TTA-1505', 'TTA-1707');
+update public.vehicles set category = 'bike'        where plate_number = 'TTA-1606';
+update public.vehicles set category = 'loader'      where plate_number = 'TTA-1808';
+
+-- Each driver belongs to one city (dispatch is city + category). Toba Tek Singh has one driver of
+-- every type; Kamalia and Pir Mahal have a Mini driver each.
+update public.drivers set city_id = '11111111-1111-4111-8111-000000000005' where id in (
+  '33333333-3333-4333-8333-000000000012', '33333333-3333-4333-8333-000000000014',
+  '33333333-3333-4333-8333-000000000016', '33333333-3333-4333-8333-000000000017',
+  '33333333-3333-4333-8333-000000000018', '33333333-3333-4333-8333-000000000019');
+update public.drivers set city_id = '11111111-1111-4111-8111-000000000001' where id = '33333333-3333-4333-8333-000000000011';
+update public.drivers set city_id = '11111111-1111-4111-8111-000000000002' where id = '33333333-3333-4333-8333-000000000013';
+update public.drivers set city_id = '11111111-1111-4111-8111-000000000003' where id = '33333333-3333-4333-8333-000000000015';
+update public.drivers set current_city_id = city_id;
 -- Preferred routes. A, B, C work the Pir Mahal ⇄ Rajana corridor (and A also
 -- Pir Mahal → Kamalia); D works Kamalia ⇄ Pir Mahal; E has none yet.
 insert into public.driver_routes (driver_id, route_id) values

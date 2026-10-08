@@ -69,7 +69,7 @@ class MyRidesTab extends ConsumerWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('${r.originName} → ${r.destinationName}',
+                                Text(tripTitle(r.originName, r.destinationName),
                                     style: AppText.body(15, weight: FontWeight.w600)),
                                 const SizedBox(height: 3),
                                 Text(

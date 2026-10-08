@@ -86,6 +86,10 @@ abstract interface class ProfileRepository {
     String? cityId,
   });
 
+  /// Passenger → "Driver mode": starts a PENDING driver application on the
+  /// same account.
+  Future<void> becomeDriver();
+
   Future<void> updateEmergencyContact({String? name, String? phone});
 
   Future<DriverInfo?> fetchMyDriverInfo();

@@ -89,6 +89,50 @@ class AdminRepository {
 
   Future<void> deleteStop(String id) => _c.from('route_stops').delete().eq('id', id);
 
+  // Places (villages, stops, landmarks shown first in the map search) ------
+  Future<List<DbRow>> places() async => await _c.from('places').select().order('name');
+
+  Future<void> savePlace(DbRow values, {String? id}) async {
+    id == null ? await _c.from('places').insert(values) : await _c.from('places').update(values).eq('id', id);
+  }
+
+  Future<void> deletePlace(String id) => _c.from('places').delete().eq('id', id);
+
+  // Ride types (Bike, Rickshaw, Mini, Premium, Courier) ----------------------
+  Future<List<DbRow>> categories() async => await _c.from('ride_categories').select().order('sort_order');
+
+  Future<void> saveCategory(String code, DbRow values) =>
+      _c.from('ride_categories').update(values).eq('code', code);
+
+  Future<void> setDriverCity(String driverId, String cityId) =>
+      _c.rpc('admin_set_driver_city', params: {'p_driver_id': driverId, 'p_city_id': cityId});
+  Future<void> setDriverCategory(String driverId, String category) =>
+      _c.rpc('admin_set_driver_category', params: {'p_driver_id': driverId, 'p_category': category});
+  Future<List<DbRow>> vehicleModels() async =>
+      await _c.from('vehicle_models').select().order('category').order('make').order('model');
+  Future<void> saveVehicleModel(DbRow values, {String? id}) async {
+    if (id == null) {
+      await _c.from('vehicle_models').insert(values);
+    } else {
+      await _c.from('vehicle_models').update(values).eq('id', id);
+    }
+  }
+  Future<void> deleteVehicleModel(String id) => _c.from('vehicle_models').delete().eq('id', id);
+  Future<List<DbRow>> fareReport({DateTime? from, DateTime? to, String? bookingType}) async =>
+      ((await _c.rpc('admin_fare_report', params: {
+        'p_from': from?.toIso8601String().substring(0, 10),
+        'p_to': to?.toIso8601String().substring(0, 10),
+        'p_booking_type': bookingType,
+      })) as List).cast<DbRow>();
+  Future<List<DbRow>> hourlyPackages() async => await _c.from('hourly_packages').select().order('sort_order').order('hours');
+  Future<void> saveHourlyPackage(DbRow values, {String? id}) async {
+    if (id == null) {
+      await _c.from('hourly_packages').insert(values);
+    } else {
+      await _c.from('hourly_packages').update(values).eq('id', id);
+    }
+  }
+  Future<void> deleteHourlyPackage(String id) => _c.from('hourly_packages').delete().eq('id', id);
   Future<List<DbRow>> settings() async => await _c.from('settings').select().order('key');
 
   Future<void> saveSetting(String key, Object? value) =>

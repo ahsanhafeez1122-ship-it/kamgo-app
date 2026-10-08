@@ -10,6 +10,8 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text.dart';
 import '../../../core/utils/phone.dart';
 import '../../../core/widgets/buttons.dart';
+import '../../../core/services/supabase_providers.dart';
+import '../../profile/presentation/app_mode.dart';
 import '../../profile/presentation/profile_providers.dart';
 import '../domain/auth_service.dart';
 import 'auth_layout.dart';
@@ -67,9 +69,14 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
     });
     try {
       await ref.read(authServiceProvider).verifyOtp(phoneE164: widget.phone, code: code);
+      // Read the profile straight from the signed-in session. Going through
+      // myProfileProvider here can race the auth stream and return the
+      // pre-login (empty) answer, which sends existing users to profile setup.
+      final profile = await ref.read(profileRepositoryProvider).fetchMine();
       ref.invalidate(myProfileProvider);
-      final profile = await ref.read(myProfileProvider.future);
-      if (mounted) context.go(homeRouteFor(profile));
+      if (mounted) {
+        context.go(homeRouteFor(profile, passengerMode: isPassengerMode(ref.read(sharedPrefsProvider))));
+      }
     } on AuthFailure catch (e) {
       setState(() => _error = e.message);
     } catch (_) {

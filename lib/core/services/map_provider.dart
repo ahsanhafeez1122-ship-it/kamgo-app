@@ -40,13 +40,16 @@ class OsmMapProvider implements MapProvider {
     List<MapMarker> markers = const [],
     Color polylineColor = const Color(0xFF16A34A),
   }) {
-    final fit = fitPoints.length >= 2
-        ? CameraFit.coordinates(coordinates: fitPoints, padding: const EdgeInsets.all(56))
+    // Points on top of each other (a trip inside one spot) have no extent to fit: fitting them would zoom forever.
+    final spread = fitPoints.length >= 2 &&
+        fitPoints.any((p) => (p.latitude - fitPoints.first.latitude).abs() > 0.001 || (p.longitude - fitPoints.first.longitude).abs() > 0.001);
+    final fit = spread
+        ? CameraFit.coordinates(coordinates: fitPoints, padding: const EdgeInsets.all(56), maxZoom: 17)
         : null;
     return FlutterMap(
       options: MapOptions(
         initialCenter: fitPoints.isEmpty ? const LatLng(30.75, 72.5) : fitPoints.first,
-        initialZoom: 11,
+        initialZoom: spread || fitPoints.isEmpty ? 11 : 15,
         initialCameraFit: fit,
         interactionOptions: const InteractionOptions(flags: InteractiveFlag.all & ~InteractiveFlag.rotate),
       ),

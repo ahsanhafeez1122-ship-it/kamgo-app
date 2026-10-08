@@ -1,116 +1,65 @@
-# KAM GO — final test script
+# KAM GO — testing guide
 
-Two parts: an automatic server test (2 minutes), then a hands-on run through
-the app in Chrome that follows the Section 21 acceptance story.
 OTP for every demo number is **123456**.
 
-## 0. Setup
+## 1. Start everything (Windows)
 
-```bash
-cd ~/Kamalia/kamgo_app
-export PATH="$HOME/development/flutter/bin:$PATH"
-alias supabase=~/development/supabase-cli/supabase
-supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor,mailpit,postgres-meta
-supabase db reset                      # fresh seed before each full run
+```powershell
+cd d:\kamgo-app-main
+D:\supabase-cli\supabase.exe start        # local database, if it is not running
+D:\supabase-cli\supabase.exe db reset     # fresh data (run again before every full test)
+$env:Path = "D:\flutter\bin;$env:Path"
+flutter run -d web-server --release --web-port 8080 --web-hostname 127.0.0.1 --dart-define-from-file=.env
 ```
 
-## 1. Automatic acceptance test (server)
+Then double-click **KAMGO Test Windows.bat** on the Desktop (or run `tools\open_test_windows.ps1`).
+It opens three windows, already signed in:
 
-```bash
-SUPABASE=~/development/supabase-cli/supabase tools/acceptance_test.sh
-dart run tools/realtime_check.dart "$(supabase status -o env | sed -n 's/^PUBLISHABLE_KEY="\(.*\)"/\1/p')"
-supabase db reset                      # reset again before the manual run
+| Window | Account | Role |
+|---|---|---|
+| Passenger | 923000000002 Ali Raza | passenger |
+| Driver 1 | 923000000012 Bilal | Car Mini, Toba Tek Singh |
+| Driver 2 | 923000000019 Faisal | Car XL, Toba Tek Singh |
+
+Other demo drivers: 923000000011 Mini (Kamalia), 923000000013 Mini (Pir Mahal), 923000000014 Comfort (Toba, offline),
+923000000016 Bike, 923000000017 Rickshaw, 923000000018 Loader (all Toba). Admin: 923000000001.
+The **Passenger | Driver** switch at the top of every home screen flips the same account between the two sides.
+
+## 2. Automatic checks
+
+```powershell
+flutter analyze
+flutter test --exclude-tags golden                      # unit + widget tests (fares, booking, place picker...)
 ```
 
-Expected: `Passed: 35   Failed: 0`. It signs in as the demo users through the
-public API — exactly like the app — and checks: Rs. 10 / Rs. 50,000 rejected;
-only approved + online drivers see/offer/get notified; A accepts 1,100, B
-counters 1,200, C counters 1,300; selecting B makes A and C unavailable; two
-simultaneous selections → exactly one wins (row lock); only B can start and
-complete; server commission **Rs. 120 / driver Rs. 1,080** + ledger; every
-client attempt to write commission, ledger, fare or settings is refused;
-5-star rating; ride in both histories; B sees a Rajana → Pir Mahal request as a
-**return ride**; cancellation works.
+Server test (139 checks, run right after `db reset`; the seeded request expires after ~3 minutes):
 
-## 2. Hands-on (Chrome, three windows)
-
-Open three windows side by side (use separate Chrome profiles or one normal +
-two incognito, because each window keeps its own login):
-
-```bash
-flutter run -d chrome --dart-define-from-file=.env     # then open the printed URL in the other windows
+```powershell
+Copy-Item tools\acceptance_test.sh $env:TEMP\acc\acc.sh -Force
+docker run --rm -v "$env:TEMP\acc:/w" -e SUPABASE=/w/fake.sh -e API=http://host.docker.internal:54321 kg-acc bash /w/acc.sh
 ```
 
-| Window | Sign in as |
-|---|---|
-| P | 0300 0000002 — Ali Raza (passenger) |
-| A | 0300 0000011 — Driver A |
-| B | 0300 0000012 — Driver B |
+Trips that need hours to pass (hourly 4h20m = Rs. 5400, round trip waiting = Rs. 3780 / 4030, reminders):
 
-1. **P — Home.** Pickup **Pir Mahal**, destination **Rajana**, passengers **2**.
-   Your Offer: type `10` → "Minimum … Rs. 440" (button disabled); `50000` →
-   "Maximum … Rs. 2,200"; set **1100**. Online Drivers shows **3** in Pir Mahal adda.
-2. **P — Find a Ride.** Green check "Request sent", then the radar screen
-   ("Finding drivers near you…", your offer Rs. 1,100 · 2 passengers).
-3. **A and B — Dashboard.** They're online in the Pir Mahal adda; the request
-   appears within a second or two (and an alert slides down from the top).
-   - A: **Accept Rs. 1,100**.
-   - B: **Counter Offer** → 1200 → Send offer.
-4. **P — Driver Offers.** Moves automatically to "N drivers responded". Imran
-   (green Rs. 1,100, "Accepted your offer", green border + solid Select) and
-   Bilal (navy Rs. 1,200, amber "Counter Offer"). Have B change the counter to
-   1250 and back to 1200 — the number animates on P's screen.
-5. **P — Select Bilal.** Ride Confirmed screen with map, Bilal's car + plate,
-   Call / Message / Share Trip / Cancel. On A's dashboard the request disappears
-   and A gets "Passenger chose another driver".
-6. **B — Ride screen opens** (passenger name, 2 passengers, Call). Tap
-   **I'm on my way** → P sees "Driver is on the way". Tap **Start Ride** → P sees
-   "Ride in progress" and the car moving along the route.
-7. **B — Complete Ride.** Sheet shows Final fare Rs. 1,200 / KAM GO − Rs. 120 /
-   Driver earning Rs. 1,080. Confirm → summary with the server's numbers.
-8. **P — Ride completed** screen appears: tap 5 stars, comment, Submit. My Rides
-   shows the ride with ★★★★★.
-9. **B — Earnings tab:** today Rs. 1,080 (+ earlier seed ride), commission due
-   includes Rs. 120.
-10. **Return ride:** sign in a new window as `0300 0000098`, choose "I need
-    rides", set pickup **Rajana** → **Pir Mahal**, Find a Ride. On B's dashboard
-    it appears under **Return ride opportunities** (B is now in Rajana).
-11. **Offline / unapproved drivers never receive requests:** sign in as
-    `0300 0000014` (offline) or `0300 0000015` (pending) — no requests, and the
-    pending driver sees "Finish your registration" / "Under review".
-
-## 3. Driver registration + admin approval
-
-1. Sign in as `0300 0000099` → "I drive" → Rajana → **Complete registration**:
-   CNIC `33100-1234567-1`, vehicle, plate, routes, upload the 6 photos (any
-   images), Submit → "Under review". Going online is impossible.
-2. Admin panel: `flutter run -d chrome -t lib/main_admin.dart --dart-define-from-file=.env`,
-   sign in `0300 0000001`. **Drivers → Pending** → *view* documents (signed
-   URLs) → **Approve**.
-3. Back in the driver window: pull to refresh → online toggle appears → go online.
-
-## 4. Admin panel tour
-
-Dashboard totals · Drivers (approve / reject with reason / suspend, record
-cash payment of commission) · Passengers (suspend) · Cities (edit, disable) ·
-Routes (edit distance, disable, add stops) · Rides (filter by status / city /
-name; click a row for Final Fare / KAM GO / Driver breakdown; cancel an active
-ride) · Complaints · Settings (try commission 80 → refused, 12 → saved; set it
-back to 10).
-
-## 5. Weak network & extras
-
-- Turn Wi-Fi off (or Chrome DevTools → Network → Offline): an amber
-  "Connection lost" strip appears; screens keep showing the last data; turn it
-  back on and they refresh.
-- Profile → Language → اردو: layout flips to RTL, navigation and main screens
-  in Urdu.
-- Profile → Help & Support: FAQ, WhatsApp / call, report a driver / ride.
-- Ride screen → Share Trip: share sheet with route, driver, plate, fare.
-
-## 6. Unit and screenshot tests
-
-```bash
-flutter test --exclude-tags golden   # 30 tests
-flutter test test/goldens            # 5 screenshot tests (Home, Splash, Finding, Offers, Driver dashboard)
+```powershell
+Get-Content tools\test_booking_scenarios.sql | docker exec -i supabase_db_kamgo_app psql -U postgres
 ```
+
+## 3. Hands-on story
+
+1. **Driver 1, Driver 2:** switch the green toggle to Online.
+2. **Passenger — City Ride:** pickup (write it, e.g. "bilal town"), destination in the same city. If the
+   two places cannot be told apart the app counts ≈ 3 km (admin setting) and you can correct the Distance.
+   Pick **Car Mini**, press **Find a Ride**. Only Driver 1 gets it (Driver 2 is XL).
+3. **Driver 1:** Accept or Counter. **Passenger:** pick the offer → ride confirmed.
+4. **Driver 1:** I'm on my way → I have arrived (waiting is free for 5 minutes) → Start → Complete.
+   The Earnings tab shows the ride; the commission is 10 %.
+5. **Passenger — City to City:** pick a city card (e.g. Rajana), a ride type and send it. Drivers of the
+   pickup city see a "City to City" badge. **Round Trip** adds the waiting-at-destination field.
+6. **Cancel tests:** cancel from the passenger side at each step; the request/ride must disappear on the driver
+   side within ~10 seconds.
+7. **Admin** (separate build: `flutter build web -t lib/main_admin.dart --dart-define-from-file=.env --output build/admin`):
+   cities and service radius, ride types and all fare numbers, vehicle models, drivers (change city / type),
+   fare report, settings.
+
+Fares come entirely from the database (settings + ride types); nothing is hard-coded in the apps.

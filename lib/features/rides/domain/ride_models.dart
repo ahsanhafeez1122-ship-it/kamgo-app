@@ -1,3 +1,5 @@
+import '../../../core/utils/format.dart';
+import 'fare_service.dart';
 import 'ride_status.dart';
 
 double _d(Object? v) => (v as num?)?.toDouble() ?? 0;
@@ -20,6 +22,19 @@ class RideRequest {
     required this.offeredFare,
     required this.status,
     required this.expiresAt,
+    this.pickupLabel,
+    this.dropoffLabel,
+    this.recommendedFare,
+    this.minOfferFare,
+    this.maxOfferFare,
+    this.distanceKm,
+    this.createdAt,
+    this.category = 'car_mini',
+    this.bookingType = BookingType.oneWay,
+    this.packageHours,
+    this.packageKm,
+    this.expectedWaitMin = 0,
+    this.scheduledAt,
   });
 
   factory RideRequest.fromJson(Map<String, dynamic> j) => RideRequest(
@@ -31,6 +46,19 @@ class RideRequest {
         offeredFare: _d(j['offered_fare']),
         status: RideStatus.fromCode(j['status'] as String),
         expiresAt: _t(j['expires_at'])!,
+        pickupLabel: j['pickup_label'] as String?,
+        dropoffLabel: j['dropoff_label'] as String?,
+        recommendedFare: (j['recommended_fare'] as num?)?.toDouble(),
+        minOfferFare: (j['min_offer_fare'] as num?)?.toDouble(),
+        maxOfferFare: (j['max_offer_fare'] as num?)?.toDouble(),
+        distanceKm: (j['distance_km'] as num?)?.toDouble(),
+        createdAt: _t(j['created_at']),
+        category: j['category'] as String? ?? 'car_mini',
+        bookingType: BookingType.fromCode(j['booking_type'] as String?),
+        packageHours: _i(j['package_hours']),
+        packageKm: (j['package_km'] as num?)?.toDouble(),
+        expectedWaitMin: _i(j['expected_wait_min']) ?? 0,
+        scheduledAt: _t(j['scheduled_at']),
       );
 
   final String id;
@@ -41,6 +69,34 @@ class RideRequest {
   final double offeredFare;
   final RideStatus status;
   final DateTime expiresAt;
+
+  /// The pickup and drop-off exactly as the passenger wrote or chose them.
+  final String? pickupLabel;
+  final String? dropoffLabel;
+
+  /// What the fare engine said for this trip when it was requested.
+  final double? recommendedFare;
+  final double? minOfferFare;
+  final double? maxOfferFare;
+  final double? distanceKm;
+  final DateTime? createdAt;
+  final String category;
+  final BookingType bookingType;
+  final int? packageHours;
+  final double? packageKm;
+  final int expectedWaitMin;
+  final DateTime? scheduledAt;
+
+  /// The band an offer on this request must stay inside (null for old requests).
+  FareQuote? get quote => minOfferFare == null || maxOfferFare == null
+      ? null
+      : FareQuote(
+          recommended: (recommendedFare ?? offeredFare).round(),
+          minOffer: minOfferFare!.round(),
+          maxOffer: maxOfferFare!.round(),
+          commission: 0,
+          driverGets: 0,
+        );
 }
 
 /// A driver's response, as the passenger sees it.
@@ -115,7 +171,8 @@ class Place {
   final String? label;
   final GeoPoint? point;
 
-  String get display => label == null || label!.isEmpty ? name : '$label, $name';
+  /// What to show: the name the passenger wrote or chose, exactly; the town only if there is none.
+  String get display => label == null || label!.trim().isEmpty ? name : label!.trim();
 }
 
 class RideParty {
@@ -171,6 +228,38 @@ class RideDetails {
     this.estMinutes,
     this.startedAt,
     this.completedAt,
+    this.confirmedAt,
+    this.etaMin,
+    this.pickupDistanceKm,
+    this.acceptedFare,
+    this.recommendedFare,
+    this.categoryName,
+    this.isNight = false,
+    this.arrivedAt,
+    this.waitingMinutes = 0,
+    this.waitingCharge = 0,
+    this.bookingType = BookingType.oneWay,
+    this.packageHours,
+    this.packageKm,
+    this.expectedWaitMin = 0,
+    this.expectedWaitCharge = 0,
+    this.scheduledAt,
+    this.actualKm = 0,
+    this.actualMinutes,
+    this.extraKm = 0,
+    this.extraKmCharge = 0,
+    this.extraHours = 0,
+    this.extraHourCharge = 0,
+    this.destArrivedAt,
+    this.returnStartedAt,
+    this.destWaitingMinutes = 0,
+    this.destWaitingCharge = 0,
+    this.driverGets,
+    this.commissionAmount,
+    this.categoryCode,
+    this.extraKmRate = 0,
+    this.extraHourRate = 0,
+    this.roundTripWaitPerHour = 0,
     this.myRating,
     this.commission,
     this.driverEarning,
@@ -199,6 +288,38 @@ class RideDetails {
       estMinutes: _i(j['est_duration_min']),
       startedAt: _t(j['started_at']),
       completedAt: _t(j['completed_at']),
+      confirmedAt: _t(j['confirmed_at']),
+      acceptedFare: (j['accepted_fare'] as num?)?.toDouble(),
+      recommendedFare: (j['recommended_fare'] as num?)?.toDouble(),
+      categoryName: j['category_name'] as String?,
+      isNight: j['is_night'] as bool? ?? false,
+      arrivedAt: _t(j['arrived_at']),
+      waitingMinutes: _i(j['waiting_minutes']) ?? 0,
+      waitingCharge: _d(j['waiting_charge']),
+      bookingType: BookingType.fromCode(j['booking_type'] as String?),
+      packageHours: _i(j['package_hours']),
+      packageKm: (j['package_km'] as num?)?.toDouble(),
+      expectedWaitMin: _i(j['expected_wait_min']) ?? 0,
+      expectedWaitCharge: _d(j['expected_wait_charge']),
+      scheduledAt: _t(j['scheduled_at']),
+      actualKm: _d(j['actual_km']),
+      actualMinutes: _i(j['actual_minutes']),
+      extraKm: _d(j['extra_km']),
+      extraKmCharge: _d(j['extra_km_charge']),
+      extraHours: _i(j['extra_hours']) ?? 0,
+      extraHourCharge: _d(j['extra_hour_charge']),
+      destArrivedAt: _t(j['dest_arrived_at']),
+      returnStartedAt: _t(j['return_started_at']),
+      destWaitingMinutes: _i(j['dest_waiting_minutes']) ?? 0,
+      destWaitingCharge: _d(j['dest_waiting_charge']),
+      driverGets: (j['driver_gets'] as num?)?.toDouble(),
+      commissionAmount: (j['commission_amount'] as num?)?.toDouble(),
+      categoryCode: j['category'] as String?,
+      extraKmRate: _d(j['extra_km_rate']),
+      extraHourRate: _d(j['extra_hour_rate']),
+      roundTripWaitPerHour: _d(j['round_trip_wait_per_hour']),
+      etaMin: _i(j['eta_min']),
+      pickupDistanceKm: (j['pickup_distance_km'] as num?)?.toDouble(),
       myRating: _i(j['my_rating']),
       commission: c == null ? null : _d(c['amount']),
       driverEarning: c == null ? null : _d(c['driver_earning']),
@@ -220,12 +341,50 @@ class RideDetails {
   final int? estMinutes;
   final DateTime? startedAt;
   final DateTime? completedAt;
+
+  /// When the passenger chose this driver, and the arrival time the driver promised then.
+  final DateTime? confirmedAt;
+  final int? etaMin;
+  final double? pickupDistanceKm;
+
+  /// The money: what was agreed, what the fare engine recommended, and waiting at the pickup.
+  final double? acceptedFare;
+  final double? recommendedFare;
+  final String? categoryName;
+  final bool isNight;
+  final DateTime? arrivedAt;
+  final int waitingMinutes;
+  final double waitingCharge;
+
+  /// One way / hourly / round trip, and everything that trip type adds to the fare.
+  final BookingType bookingType;
+  final int? packageHours;
+  final double? packageKm;
+  final int expectedWaitMin;
+  final double expectedWaitCharge;
+  final DateTime? scheduledAt;
+  final double actualKm;
+  final int? actualMinutes;
+  final double extraKm;
+  final double extraKmCharge;
+  final int extraHours;
+  final double extraHourCharge;
+  final DateTime? destArrivedAt;
+  final DateTime? returnStartedAt;
+  final int destWaitingMinutes;
+  final double destWaitingCharge;
+  final double? driverGets;
+  final double? commissionAmount;
+  final String? categoryCode;
+  final double extraKmRate;
+  final double extraHourRate;
+  final double roundTripWaitPerHour;
   final int? myRating;
   final double? commission;
   final double? driverEarning;
   final GeoPoint? lastLocation;
 
-  String get routeName => '${origin.name} → ${destination.name}';
+  String get routeName => tripTitle(origin.display, destination.display);
 
   bool get isActive =>
       status == RideStatus.confirmed ||

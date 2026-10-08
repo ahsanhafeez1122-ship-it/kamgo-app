@@ -15,6 +15,7 @@ import '../../../core/widgets/buttons.dart';
 import '../../../core/widgets/motion_widgets.dart';
 import '../../../core/widgets/states.dart';
 import '../../rides/domain/ride_models.dart';
+import '../../rides/domain/ride_status.dart';
 import '../../rides/presentation/live_state.dart';
 import '../../rides/presentation/ride_flow_providers.dart';
 import '../../rides/presentation/ride_providers.dart';
@@ -70,6 +71,17 @@ class _DriverOffersScreenState extends ConsumerState<DriverOffersScreen> {
     final data = live.valueOrNull;
     final req = data?.request;
 
+    // A driver accepted the fare himself: the ride is on, open it.
+    if (req != null && req.status == RideStatus.confirmed && _selecting == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (_selecting != null || !mounted) return;
+        _selecting = 'auto';
+        ref.invalidate(activeStateProvider);
+        final a = await ref.read(rideRepositoryProvider).myActive();
+        if (context.mounted && a.rideId != null) context.go(AppRoutes.ride(a.rideId!));
+      });
+      return const Scaffold(body: Center(child: CircularProgressIndicator(color: AppColors.green)));
+    }
     if (req != null && !req.status.isOpen && _selecting == null) {
       return Scaffold(
         appBar: AppBar(),
@@ -87,7 +99,10 @@ class _DriverOffersScreenState extends ConsumerState<DriverOffersScreen> {
     final n = offers.length;
     final route = req == null
         ? ''
-        : '${catalog?.city(req.originCityId)?.name ?? ''} → ${catalog?.city(req.destinationCityId)?.name ?? ''}';
+        : tripTitle(
+            placeName(req.pickupLabel, catalog?.city(req.originCityId)?.name ?? ''),
+            placeName(req.dropoffLabel, catalog?.city(req.destinationCityId)?.name ?? ''),
+          );
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.dark,
@@ -206,8 +221,8 @@ class _OfferCard extends StatelessWidget {
     final accepted = offer.type == OfferType.accept;
     final fareStyle = AppText.display(21, weight: FontWeight.w800, color: accepted ? AppColors.green : AppColors.navy);
     final details = [
-      if (offer.distanceKm != null) '${offer.distanceKm!.toStringAsFixed(1)} km',
-      if (offer.etaMin != null) '${offer.etaMin} min',
+      if (offer.etaMin != null) 'Arrives in ${offer.etaMin} min',
+      if (offer.distanceKm != null) '${offer.distanceKm!.toStringAsFixed(1)} km away',
     ].join(' · ');
 
     return Container(

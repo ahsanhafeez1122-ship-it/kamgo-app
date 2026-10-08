@@ -6,7 +6,7 @@ import '../../../core/theme/app_text.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/widgets/buttons.dart';
 import '../../rides/domain/catalog.dart';
-import '../../rides/domain/fare_policy.dart';
+import '../../rides/domain/fare_service.dart';
 
 Future<String?> showCityPicker(
   BuildContext context, {
@@ -105,25 +105,27 @@ Future<int?> showPassengersSheet(BuildContext context, {required int initial, re
   );
 }
 
+/// The passenger's offer. [quote] comes from the shared fare service, so the band and the
+/// recommendation are the same numbers the server will check.
 Future<int?> showOfferSheet(
   BuildContext context, {
   required int initial,
   required double distanceKm,
-  required FarePolicy policy,
+  required FareQuote quote,
 }) {
   return showModalBottomSheet<int>(
     context: context,
     isScrollControlled: true,
-    builder: (context) => _OfferSheet(initial: initial, distanceKm: distanceKm, policy: policy),
+    builder: (context) => _OfferSheet(initial: initial, distanceKm: distanceKm, quote: quote),
   );
 }
 
 class _OfferSheet extends StatefulWidget {
-  const _OfferSheet({required this.initial, required this.distanceKm, required this.policy});
+  const _OfferSheet({required this.initial, required this.distanceKm, required this.quote});
 
   final int initial;
   final double distanceKm;
-  final FarePolicy policy;
+  final FareQuote quote;
 
   @override
   State<_OfferSheet> createState() => _OfferSheetState();
@@ -147,14 +149,13 @@ class _OfferSheetState extends State<_OfferSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final min = widget.policy.minFare(widget.distanceKm);
-    final max = widget.policy.maxFare(widget.distanceKm);
+    final q = widget.quote;
     final v = _value;
-    final check = v == null ? FareCheck.tooLow : widget.policy.check(v, widget.distanceKm);
+    final check = v == null ? FareCheck.tooLow : q.check(v);
     final message = switch (check) {
-      FareCheck.ok => 'Drivers can accept this or send a counter offer.',
-      FareCheck.tooLow => 'Minimum for this route is ${formatFare(min)}.',
-      FareCheck.tooHigh => 'Maximum for this route is ${formatFare(max)}.',
+      FareCheck.ok => 'Drivers can accept this or send a counter offer. Tap Recommended to use our suggestion.',
+      FareCheck.tooLow => 'Lowest offer for this trip is ${formatFare(q.minOffer)}.',
+      FareCheck.tooHigh => 'Highest offer for this trip is ${formatFare(q.maxOffer)}.',
       FareCheck.invalidRoute => 'This route is not available.',
     };
 
@@ -170,14 +171,23 @@ class _OfferSheetState extends State<_OfferSheet> {
               Text('Your offer', style: AppText.display(18)),
               const SizedBox(height: 4),
               Text(
-                '${widget.distanceKm.toStringAsFixed(0)} km · fair range '
-                '${formatFare(min)} – ${formatFare(max)}',
+                '${widget.distanceKm.toStringAsFixed(1)} km · recommended ${formatFare(q.recommended)} · '
+                'you can offer ${formatFare(q.minOffer)} – ${formatFare(q.maxOffer)}',
                 style: AppText.body(13, color: AppColors.muted),
+              ),
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: ActionChip(
+                  avatar: const Icon(Icons.auto_awesome_rounded, size: 16, color: AppColors.green),
+                  label: Text('Recommended ${formatFare(q.recommended)}'),
+                  onPressed: () => setState(() => _controller.text = '${q.recommended}'),
+                ),
               ),
               const SizedBox(height: 20),
               Row(
                 children: [
-                  _RoundIconButton(icon: Icons.remove_rounded, onTap: () => _bump(-50)),
+                  _RoundIconButton(icon: Icons.remove_rounded, onTap: () => _bump(-10)),
                   const SizedBox(width: 12),
                   Expanded(
                     child: TextField(
@@ -198,7 +208,7 @@ class _OfferSheetState extends State<_OfferSheet> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  _RoundIconButton(icon: Icons.add_rounded, onTap: () => _bump(50)),
+                  _RoundIconButton(icon: Icons.add_rounded, onTap: () => _bump(10)),
                 ],
               ),
               const SizedBox(height: 10),
@@ -220,7 +230,6 @@ class _OfferSheetState extends State<_OfferSheet> {
     );
   }
 }
-
 class _RoundIconButton extends StatelessWidget {
   const _RoundIconButton({required this.icon, required this.onTap});
 

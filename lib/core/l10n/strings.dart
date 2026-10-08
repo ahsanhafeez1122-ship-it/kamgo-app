@@ -51,7 +51,7 @@ const _en = <String, String>{
   'home.open': 'Open',
   'home.rate_last': 'How was your last ride?',
   'finding.title': 'Finding drivers near you',
-  'finding.subtitle': 'Matching your offer with the {city} adda',
+  'finding.subtitle': 'Sending your offer to drivers of this ride type',
   'finding.cancel': 'Cancel Request',
   'finding.sent': 'Request sent',
   'offers.responded': '{n} drivers responded',

@@ -127,7 +127,7 @@ class EarningsTab extends ConsumerWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('${h.originName} → ${h.destinationName}',
+                                  Text(tripTitle(h.originName, h.destinationName),
                                       style: AppText.body(14.5, weight: FontWeight.w600)),
                                   Text('${DateFormat('d MMM, h:mm a').format(h.createdAt)} · ${h.otherName}',
                                       style: AppText.body(12, color: AppColors.muted)),

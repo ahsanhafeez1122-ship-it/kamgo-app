@@ -14,8 +14,10 @@ import '../../auth/presentation/auth_providers.dart';
 import 'admin_widgets.dart';
 import 'pages/catalog_pages.dart';
 import 'pages/complaints_page.dart';
+import 'pages/places_page.dart';
 import 'pages/dashboard_page.dart';
 import 'pages/drivers_page.dart';
+import 'pages/fares_pages.dart';
 import 'pages/passengers_page.dart';
 import 'pages/rides_page.dart';
 import 'pages/settings_page.dart';
@@ -175,6 +177,11 @@ class _AdminShellState extends ConsumerState<_AdminShell> {
     (Icons.people_alt_rounded, 'Passengers'),
     (Icons.location_city_rounded, 'Cities'),
     (Icons.alt_route_rounded, 'Routes'),
+    (Icons.place_rounded, 'Places'),
+    (Icons.category_rounded, 'Ride types'),
+    (Icons.directions_car_filled_rounded, 'Vehicle models'),
+    (Icons.schedule_rounded, 'Hourly packages'),
+    (Icons.bar_chart_rounded, 'Fare report'),
     (Icons.receipt_long_rounded, 'Rides'),
     (Icons.report_rounded, 'Complaints'),
     (Icons.tune_rounded, 'Settings'),
@@ -186,8 +193,13 @@ class _AdminShellState extends ConsumerState<_AdminShell> {
         2 => const AdminPassengersPage(),
         3 => const AdminCitiesPage(),
         4 => const AdminRoutesPage(),
-        5 => const AdminRidesPage(),
-        6 => const AdminComplaintsPage(),
+        5 => const AdminPlacesPage(),
+        6 => const AdminCategoriesPage(),
+        7 => const AdminVehicleModelsPage(),
+        8 => const AdminPackagesPage(),
+        9 => const AdminFareReportPage(),
+        10 => const AdminRidesPage(),
+        11 => const AdminComplaintsPage(),
         _ => const AdminSettingsPage(),
       };
 

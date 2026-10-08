@@ -31,6 +31,11 @@ class SupabaseProfileRepository implements ProfileRepository {
   }
 
   @override
+  Future<void> becomeDriver() async {
+    await _client.rpc('become_driver');
+  }
+
+  @override
   Future<void> updateEmergencyContact({String? name, String? phone}) async {
     final uid = _uid;
     if (uid == null) return;

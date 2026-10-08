@@ -11,6 +11,19 @@ only on completed rides.
 Flutter (Android app + web admin panel) · Riverpod · go_router · Supabase
 (Postgres, Auth, Realtime, Storage, Edge Functions) · flutter_map / OpenStreetMap.
 
+| Home | Finding drivers | Live offers | Driver dashboard |
+|---|---|---|---|
+| <img src="test/goldens/home.png" width="200" alt="Passenger home screen"> | <img src="test/goldens/finding.png" width="200" alt="Finding drivers radar"> | <img src="test/goldens/offers.png" width="200" alt="Driver offers arriving live"> | <img src="test/goldens/driver_dashboard.png" width="200" alt="Driver dashboard"> |
+
+**Highlights**
+- Fare negotiation in real time: drivers accept or counter, offers slide in live (Supabase Realtime)
+- Exactly one driver can win: `select_offer` locks the request row, then the offer
+- Money is server-side only: commission and ledger are written by `SECURITY DEFINER` Postgres
+  functions; clients have no write grant on rides, offers or payments, and RLS is on every table
+- Built for budget phones on weak networks: offline cache, reconnect + refetch, no optimistic money
+- English and Urdu (RTL), driver onboarding with document upload, admin web panel
+- 30 unit tests, golden screenshot tests, and a 35-check acceptance test against the real backend
+
 ## What's in it
 
 | Phase | Scope | Status |
